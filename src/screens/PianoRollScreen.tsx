@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Play, Square, Trash2 } from 'lucide-react'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { ExportButton } from '../components/ExportButton'
 import { PianoRoll, type PianoRollMode } from '../components/PianoRoll'
 import * as engine from '../music/engine'
 import { INSTRUMENT_PRESETS, LOOP_PRESETS, getInstrumentPreset, loopNotes } from '../music/presets'
+import { renderTimeline } from '../music/render'
 import { STEPS_PER_BAR, type Pattern, type Song } from '../music/types'
 
 type Props = {
@@ -39,11 +41,15 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onHome, onBack
   useEffect(() => engine.warmUp([pattern.instrumentId]), [pattern.instrumentId])
   useEffect(() => () => engine.stop(), [])
 
+  function stopPlayback() {
+    engine.stop()
+    setPlaying(false)
+    setPlayStep(null)
+  }
+
   function togglePlay() {
     if (playing) {
-      engine.stop()
-      setPlaying(false)
-      setPlayStep(null)
+      stopPlayback()
       return
     }
     // Not awaited: the transport starts counting once the browser resumes audio,
@@ -173,13 +179,20 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onHome, onBack
             </select>
           </label>
 
-          <button
-            type="button"
-            onClick={() => onChangePattern((p) => ({ ...p, notes: [] }))}
-            className="ml-auto flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-sm hover:border-line-strong"
-          >
-            <Trash2 size={15} /> Clear
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            <ExportButton
+              fileName={`${song.name} - ${pattern.name}`}
+              render={() => renderTimeline(engine.patternTimeline(pattern), song.bpm)}
+              onBeforeExport={stopPlayback}
+            />
+            <button
+              type="button"
+              onClick={() => onChangePattern((p) => ({ ...p, notes: [] }))}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-sm hover:border-line-strong"
+            >
+              <Trash2 size={15} /> Clear
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">

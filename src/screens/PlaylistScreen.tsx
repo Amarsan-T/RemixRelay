@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { Pencil, Play, Plus, Square, Trash2 } from 'lucide-react'
 import { Breadcrumbs } from '../components/Breadcrumbs'
+import { ExportButton } from '../components/ExportButton'
 import { Playlist } from '../components/Playlist'
 import * as engine from '../music/engine'
 import { getInstrumentPreset } from '../music/presets'
+import { renderTimeline } from '../music/render'
 import { createPattern } from '../music/songs'
 import { patternBars, type Song } from '../music/types'
 
@@ -33,11 +35,15 @@ export function PlaylistScreen({ song, onChange, onHome, onOpenPattern }: Props)
   useEffect(() => engine.warmUp(song.patterns.map((p) => p.instrumentId)), [song.patterns])
   useEffect(() => () => engine.stop(), [])
 
+  function stopPlayback() {
+    engine.stop()
+    setPlaying(false)
+    setPlayStep(null)
+  }
+
   function togglePlay() {
     if (playing) {
-      engine.stop()
-      setPlaying(false)
-      setPlayStep(null)
+      stopPlayback()
       return
     }
     void engine.unlockAudio()
@@ -79,6 +85,11 @@ export function PlaylistScreen({ song, onChange, onHome, onOpenPattern }: Props)
               className="h-9 w-16 rounded-lg border border-line bg-white px-2 text-ink"
             />
           </label>
+          <ExportButton
+            fileName={song.name}
+            render={() => renderTimeline(engine.songTimeline(song), song.bpm)}
+            onBeforeExport={stopPlayback}
+          />
           <button
             type="button"
             onClick={togglePlay}

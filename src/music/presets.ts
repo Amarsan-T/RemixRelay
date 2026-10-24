@@ -18,6 +18,8 @@ export interface Voice {
 
 export type BuiltInstrument = {
   voice: Voice
+  /** Resolves once effects that build in the background (reverb) are ready. */
+  ready: Promise<unknown>
   /** Disposes the voice and its effect chain. */
   dispose: () => void
 }
@@ -39,6 +41,7 @@ function chain(
   voice.chain(...effects, Tone.getDestination())
   return {
     voice,
+    ready: Promise.all(effects.map((e) => (e instanceof Tone.Reverb ? e.ready : undefined))),
     dispose: () => {
       voice.dispose()
       effects.forEach((e) => e.dispose())
