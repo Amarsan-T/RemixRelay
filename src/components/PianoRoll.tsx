@@ -12,7 +12,7 @@ import {
   STEPS_PER_BEAT,
   isBlackKey,
   midiToName,
-  newNoteId,
+  newId,
   type Note,
 } from '../music/types'
 import './PianoRoll.css'
@@ -174,7 +174,7 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
     if (e.button !== 0) return
     const { step, pitch } = cellAt(e)
     const note: Note = {
-      id: newNoteId(),
+      id: newId(),
       pitch,
       start: step,
       duration: Math.min(lastDuration.current, steps - step),

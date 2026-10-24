@@ -14,11 +14,40 @@ export type Note = {
   velocity: number
 }
 
+/** A reusable block of notes, edited in the piano roll. */
 export type Pattern = {
-  bpm: number
-  /** Total loop length in steps. 16 steps = 1 bar of 4/4. */
+  id: string
+  name: string
+  instrumentId: string
+  /** Length in steps. 16 steps = 1 bar of 4/4. */
   steps: number
   notes: Note[]
+}
+
+/** One placement of a pattern on the playlist. */
+export type Clip = {
+  id: string
+  patternId: string
+  /** Playlist row, 0-based. */
+  track: number
+  /** Bar the clip starts on, 0-based. */
+  startBar: number
+}
+
+/** A project: its patterns, and where they're placed on the playlist. */
+export type Song = {
+  id: string
+  name: string
+  /** Card color on the home screen. */
+  color: string
+  bpm: number
+  /** Playlist length in bars. */
+  bars: number
+  trackCount: number
+  patterns: Pattern[]
+  clips: Clip[]
+  /** Last edit time in ms since 1970, for "Last edited 5 minutes ago". */
+  updatedAt: number
 }
 
 export const STEPS_PER_BEAT = 4
@@ -35,6 +64,11 @@ export function isBlackKey(pitch: number): boolean {
   return NOTE_NAMES[pitch % 12].includes('#')
 }
 
-export function newNoteId(): string {
+export function newId(): string {
   return crypto.randomUUID()
+}
+
+/** How many playlist bars a pattern covers. */
+export function patternBars(pattern: Pattern): number {
+  return Math.max(1, Math.ceil(pattern.steps / STEPS_PER_BAR))
 }

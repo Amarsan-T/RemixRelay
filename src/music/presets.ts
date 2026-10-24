@@ -1,5 +1,5 @@
 import * as Tone from 'tone'
-import { newNoteId, type Note, type Pattern } from './types'
+import { newId, type Note } from './types'
 
 // ---------------------------------------------------------------------------
 // Instrument presets: the sound the piano roll plays through.
@@ -159,7 +159,7 @@ export function getInstrumentPreset(id: string): InstrumentPreset {
 }
 
 // ---------------------------------------------------------------------------
-// Starter loops: one-click patterns that fill the piano roll.
+// Starter loops: one-click note patterns that fill a piano roll.
 // ---------------------------------------------------------------------------
 
 export type LoopPreset = {
@@ -168,14 +168,17 @@ export type LoopPreset = {
   description: string
   /** Instrument the loop sounds best on; selected when the loop loads. */
   instrumentId: string
-  pattern: Pattern
+  /** Tempo the loop was written for; used when a demo song is built from it. */
+  bpm: number
+  steps: number
+  notes: Note[]
 }
 
 type NoteSpec = [pitch: number, start: number, duration: number, velocity?: number]
 
 function notes(specs: NoteSpec[]): Note[] {
   return specs.map(([pitch, start, duration, velocity = 0.8]) => ({
-    id: newNoteId(),
+    id: newId(),
     pitch,
     start,
     duration,
@@ -199,91 +202,83 @@ export const LOOP_PRESETS: LoopPreset[] = [
     name: 'Pop Progression',
     description: 'I – V – vi – IV in C with a bass line',
     instrumentId: 'grand-piano',
-    pattern: {
-      bpm: 100,
-      steps: 64,
-      notes: notes([
-        ...chord([C4, E4, G4], 0, 16),
-        ...chord([B3, D4, G4], 16, 16),
-        ...chord([C4, E4, A4], 32, 16),
-        ...chord([C4, F4, A4], 48, 16),
-        [C3, 0, 8], [C3, 8, 8], [G2 + 12, 16, 8], [G2 + 12, 24, 8],
-        [A2 + 12, 32, 8], [A2 + 12, 40, 8], [F3, 48, 8], [F3, 56, 8],
-      ]),
-    },
+    bpm: 100,
+    steps: 64,
+    notes: notes([
+      ...chord([C4, E4, G4], 0, 16),
+      ...chord([B3, D4, G4], 16, 16),
+      ...chord([C4, E4, A4], 32, 16),
+      ...chord([C4, F4, A4], 48, 16),
+      [C3, 0, 8], [C3, 8, 8], [G2 + 12, 16, 8], [G2 + 12, 24, 8],
+      [A2 + 12, 32, 8], [A2 + 12, 40, 8], [F3, 48, 8], [F3, 56, 8],
+    ]),
   },
   {
     id: 'lofi-chords',
     name: 'Lo-fi Chords',
     description: 'Jazzy seventh chords, laid back',
     instrumentId: 'warm-pad',
-    pattern: {
-      bpm: 78,
-      steps: 64,
-      notes: notes([
-        ...chord([C3, E4, G4, B4], 0, 14, 0.6), // Cmaj7
-        ...chord([A2 + 12, C4, E4, G4], 16, 14, 0.6), // Am7
-        ...chord([F3, A4, C5, E5], 32, 14, 0.6), // Fmaj7
-        ...chord([G3, B3, D4, F4], 48, 14, 0.6), // G7
-      ]),
-    },
+    bpm: 78,
+    steps: 64,
+    notes: notes([
+      ...chord([C3, E4, G4, B4], 0, 14, 0.6), // Cmaj7
+      ...chord([A2 + 12, C4, E4, G4], 16, 14, 0.6), // Am7
+      ...chord([F3, A4, C5, E5], 32, 14, 0.6), // Fmaj7
+      ...chord([G3, B3, D4, F4], 48, 14, 0.6), // G7
+    ]),
   },
   {
     id: 'house-bass',
     name: 'House Bass',
     description: 'Offbeat octave bass at 124 BPM',
     instrumentId: 'deep-bass',
-    pattern: {
-      bpm: 124,
-      steps: 32,
-      notes: notes(
-        [C2, C2, F2, G2].flatMap((root, bar): NoteSpec[] => {
-          const s = bar * 8
-          return [
-            [root, s + 2, 2, 0.9],
-            [root + 12, s + 6, 2, 0.7],
-          ]
-        }),
-      ),
-    },
+    bpm: 124,
+    steps: 32,
+    notes: notes(
+      [C2, C2, F2, G2].flatMap((root, bar): NoteSpec[] => {
+        const s = bar * 8
+        return [
+          [root, s + 2, 2, 0.9],
+          [root + 12, s + 6, 2, 0.7],
+        ]
+      }),
+    ),
   },
   {
     id: 'arp-sparkle',
     name: 'Arp Sparkle',
     description: '16th-note A minor arpeggio',
     instrumentId: 'pluck',
-    pattern: {
-      bpm: 128,
-      steps: 32,
-      notes: notes(
-        Array.from({ length: 32 }, (_, i): NoteSpec => {
-          // Am for the first bar, F for the second
-          const shape = i < 16 ? [A3, C4, E4, A4] : [F3, A3, C4, F4]
-          const up = [0, 1, 2, 3, 2, 1, 2, 3]
-          return [shape[up[i % 8]], i, 1, i % 4 === 0 ? 0.9 : 0.6]
-        }),
-      ),
-    },
+    bpm: 128,
+    steps: 32,
+    notes: notes(
+      Array.from({ length: 32 }, (_, i): NoteSpec => {
+        // Am for the first bar, F for the second
+        const shape = i < 16 ? [A3, C4, E4, A4] : [F3, A3, C4, F4]
+        const up = [0, 1, 2, 3, 2, 1, 2, 3]
+        return [shape[up[i % 8]], i, 1, i % 4 === 0 ? 0.9 : 0.6]
+      }),
+    ),
   },
   {
     id: 'chip-melody',
     name: 'Chip Melody',
     description: 'Bouncy 8-bit hook',
     instrumentId: 'chiptune',
-    pattern: {
-      bpm: 140,
-      steps: 32,
-      notes: notes([
-        [E4, 0, 2], [G4, 2, 2], [C5, 4, 4], [B4, 8, 2], [G4, 10, 2], [A4, 12, 4],
-        [F4, 16, 2], [A4, 18, 2], [C5, 20, 2], [B4, 22, 2], [G4, 24, 6], [D4, 30, 2],
-      ]),
-    },
+    bpm: 140,
+    steps: 32,
+    notes: notes([
+      [E4, 0, 2], [G4, 2, 2], [C5, 4, 4], [B4, 8, 2], [G4, 10, 2], [A4, 12, 4],
+      [F4, 16, 2], [A4, 18, 2], [C5, 20, 2], [B4, 22, 2], [G4, 24, 6], [D4, 30, 2],
+    ]),
   },
 ]
 
-export const EMPTY_PATTERN: Pattern = { bpm: 110, steps: 32, notes: [] }
+export function getLoopPreset(id: string): LoopPreset {
+  return LOOP_PRESETS.find((l) => l.id === id) ?? LOOP_PRESETS[0]
+}
 
-/** Fresh copy of a loop's pattern with new note ids, so edits never touch the preset. */
-export function clonePattern(pattern: Pattern): Pattern {
-  return { ...pattern, notes: pattern.notes.map((n) => ({ ...n, id: newNoteId() })) }
+/** Fresh copy of a loop's notes with new ids, so edits never touch the preset. */
+export function loopNotes(loop: LoopPreset): Note[] {
+  return loop.notes.map((n) => ({ ...n, id: newId() }))
 }
