@@ -1,26 +1,36 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Play, Square, Volume2, RotateCcw, Sliders, Music, Grid, Sparkles,
-  Trash2, Zap, Radio, Layers,
+  Trash2, Zap, Radio, Layers, ListMusic,
 } from 'lucide-react';
 import { MAX_BPM, MIN_BPM } from './src/audio';
-import { NOTES, PRESETS } from './src/studio/data';
+import { PRESETS } from './src/studio/data';
 import { useStudioProject } from './src/studio/useStudioProject';
-import { useStudioAudio } from './src/studio/useStudioAudio';
+import { useStudioAudio, type PlayMode } from './src/studio/useStudioAudio';
+import { patternsPerBar } from './src/studio/patternAdapter';
+import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
+import { StudioPlaylist } from './src/studio/StudioPlaylist';
 import type { MixerParam, StepData, StudioChannel } from './src/studio/types';
 
 export default function App() {
   const {
     project, setBpm, setLoop, setMetronome, setChannels,
-    setStepData, setPianoNotes, setMixerTracks,
+    setStepData, setPianoNotes, setMixerTracks, setSong,
   } = useStudioProject();
   const { bpm, loop, metronome, channels, stepData, pianoNotes, mixerTracks } = project;
   const [activeTab, setActiveTab] = useState('channelRack');
   const [selectedChannelId, setSelectedChannelId] = useState('synth_lead');
   const [activePattern, setActivePattern] = useState(1);
-  const { playback, audioError, play: handlePlay, stop: handleStop, preview, getOutputLevels } = useStudioAudio(project, activePattern);
+  // PAT loops the selected pattern; SONG plays the playlist.
+  const [playMode, setPlayMode] = useState<PlayMode>('pattern');
+  const { playback, audioError, play: handlePlay, stop: handleStop, preview, getOutputLevels } = useStudioAudio(project, activePattern, playMode);
   const isPlaying = playback.status === 'playing';
   const currentStep = playback.step ?? 0;
+  // In SONG mode the playhead counts across bars; the 16-step views show its position in the bar.
+  const stepInBar = currentStep % 16;
+  // Whether the pattern on screen is what you're hearing right now.
+  const activePatternSounding = isPlaying && (playMode === 'pattern' ||
+    (patternsPerBar(project)[Math.floor(currentStep / 16)]?.includes(activePattern) ?? false));
   const masterVol = mixerTracks.find((track) => track.id === 0)?.vol ?? 0.85;
   const tapTimesRef = useRef<number[]>([]);
   const masterMeterCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -216,15 +226,18 @@ export default function App() {
           <div className="flex items-center bg-zinc-900/90 p-0.5 rounded border border-zinc-700/80">
             <button
               aria-label="Pattern playback mode"
-              aria-pressed="true"
-              className="px-2.5 py-1 text-xs font-mono font-bold rounded bg-orange-500 text-zinc-950 shadow-sm"
+              aria-pressed={playMode === 'pattern'}
+              onClick={() => setPlayMode('pattern')}
+              className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'pattern' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               PAT
             </button>
             <button
-              disabled
-              title="Song arrangement is not connected yet"
-              className="px-2.5 py-1 text-xs font-mono font-bold rounded text-zinc-400"
+              aria-label="Song playback mode"
+              aria-pressed={playMode === 'song'}
+              title="Play the playlist, and open it"
+              onClick={() => { setPlayMode('song'); setActiveTab('playlist'); }}
+              className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'song' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               SONG
             </button>
@@ -303,7 +316,7 @@ export default function App() {
             <div>
               <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono block leading-none">Step</span>
               <span className="text-orange-400 font-mono text-sm font-black drop-shadow-[0_0_6px_rgba(251,146,60,0.5)]">
-                {String(currentStep + 1).padStart(2, '0')} / 16
+                {String(stepInBar + 1).padStart(2, '0')} / 16
               </span>
             </div>
           </div>
@@ -438,6 +451,16 @@ export default function App() {
 
           {/* Layout Tab Switchers */}
           <div className="flex bg-zinc-950 p-0.5 rounded-md border border-zinc-700/60 ml-2">
+            <button
+              onClick={() => setActiveTab('playlist')}
+              className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
+                activeTab === 'playlist'
+                  ? 'bg-zinc-800 text-orange-400 shadow-sm border border-zinc-700/80'
+                  : 'text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <ListMusic className="w-3.5 h-3.5" /> Playlist
+            </button>
             <button
               onClick={() => setActiveTab('channelRack')}
               className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
@@ -608,7 +631,7 @@ export default function App() {
                       {Array.from({ length: 16 }).map((_, stepIdx) => {
                         const isStepActive = currentPatternSteps[stepIdx] === 1 || (channel.type !== 'drum' &&
                           (pianoNotes[activePattern]?.[channel.id]?.some(note => note.step === stepIdx) ?? false));
-                        const isCurrentPlayStep = currentStep === stepIdx && isPlaying;
+                        const isCurrentPlayStep = stepInBar === stepIdx && activePatternSounding;
                         // FL Studio 4-beat grouping (alternating colors every 4 steps)
                         const groupIdx = Math.floor(stepIdx / 4);
                         const isEvenGroup = groupIdx % 2 === 0;
@@ -644,146 +667,30 @@ export default function App() {
           </div>
         )}
 
+        {/* VIEW 0: SONG PLAYLIST */}
+        {activeTab === 'playlist' && (
+          <StudioPlaylist
+            project={project}
+            setSong={setSong}
+            activePattern={activePattern}
+            onSelectPattern={setActivePattern}
+            onOpenPattern={(pattern) => { setActivePattern(pattern); setActiveTab('channelRack'); }}
+            playStep={playMode === 'song' && isPlaying ? currentStep : null}
+          />
+        )}
+
         {/* VIEW 2: PIANO ROLL & MELODY EDITOR */}
         {activeTab === 'pianoRoll' && (
-          <div className="max-w-6xl w-full mx-auto bg-[#202428] rounded-lg border border-zinc-700/70 shadow-2xl flex flex-col h-full max-h-[640px]">
-            {/* Piano Roll Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-zinc-800 to-zinc-850 border-b border-zinc-700/70">
-              <div className="flex items-center gap-3">
-                <Music className="w-4 h-4 text-orange-400" />
-                <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
-                  Piano Roll • {channels.find(c => c.id === selectedChannelId)?.name || 'Lead Synth'}
-                </h2>
-                <span className="text-[10px] text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-700 font-mono">
-                  Snap: 1/16 Step
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <select
-                  value={selectedChannelId}
-                  onChange={(e) => setSelectedChannelId(e.target.value)}
-                  className="bg-zinc-900 text-xs text-orange-400 font-semibold px-2 py-1 rounded border border-zinc-700 outline-none"
-                >
-                  {channels.map(ch => (
-                    <option key={ch.id} value={ch.id}>{ch.name}</option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => {
-                    setPianoNotes(prev => ({
-                      ...prev,
-                      [activePattern]: {
-                        ...(prev[activePattern] || {}),
-                        [selectedChannelId]: []
-                      }
-                    }));
-                  }}
-                  className="px-2 py-1 text-[11px] bg-zinc-800 hover:bg-red-900/50 text-zinc-300 hover:text-red-300 rounded border border-zinc-700"
-                >
-                  Clear Notes
-                </button>
-              </div>
-            </div>
-
-            {/* Piano Roll Body: Vertical Keyboard + 16-step Grid */}
-            <div className="flex-1 overflow-auto flex relative bg-[#181a1d]">
-              {/* Vertical Piano Keys */}
-              <div className="w-20 shrink-0 sticky left-0 z-10 bg-zinc-900 border-r border-zinc-700/80 shadow-md">
-                {NOTES.map((note) => {
-                  const isSharp = note.name.includes('#');
-                  return (
-                    <button
-                      key={note.name}
-                      onClick={() => {
-                        const ch = channels.find(c => c.id === selectedChannelId);
-                        if (ch) preview(ch.id, note.name);
-                      }}
-                      className={`w-full h-6 text-[10px] font-mono flex items-center justify-end pr-2 border-b border-zinc-800 transition active:scale-95 ${
-                        isSharp
-                          ? 'bg-[#1b1c1e] text-zinc-400 hover:bg-zinc-700'
-                          : 'bg-[#e4e7eb] text-zinc-900 font-bold hover:bg-white'
-                      }`}
-                    >
-                      {note.name}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Note Grid */}
-              <div className="flex-1 grid grid-cols-16 min-w-[640px] relative">
-                {/* Visual playback indicator column line */}
-                {isPlaying && (
-                  <div
-                    className="absolute top-0 bottom-0 w-0.5 bg-emerald-400 shadow-[0_0_8px_#34d399] pointer-events-none z-20 transition-all duration-75"
-                    style={{ left: `${(currentStep / 16) * 100}%` }}
-                  />
-                )}
-
-                {NOTES.map((note) => {
-                  const currentPatternNoteList = (pianoNotes[activePattern] && pianoNotes[activePattern][selectedChannelId]) || [];
-
-                  return (
-                    <div key={note.name} className="contents">
-                      {Array.from({ length: 16 }).map((_, stepIdx) => {
-                        const noteBlock = currentPatternNoteList.find(n => n.step === stepIdx && n.note === note.name);
-                        const isEvenBeat = Math.floor(stepIdx / 4) % 2 === 0;
-
-                        return (
-                          <div
-                            key={`${note.name}-${stepIdx}`}
-                            onClick={() => {
-                              if (!noteBlock && !isPlaying) preview(selectedChannelId, note.name);
-                              const active = !noteBlock || currentPatternNoteList.some(n => n.step === stepIdx && n.note !== note.name);
-                              setStepData(prev => {
-                                const gates = [...(prev[activePattern]?.[selectedChannelId] ?? new Array<number>(16).fill(0))];
-                                gates[stepIdx] = active ? 1 : 0;
-                                return { ...prev, [activePattern]: { ...prev[activePattern], [selectedChannelId]: gates } };
-                              });
-                              setPianoNotes(prev => {
-                                const pat = prev[activePattern] || {};
-                                const chNotes = [...(pat[selectedChannelId] || [])];
-                                const existingIndex = chNotes.findIndex(n => n.step === stepIdx && n.note === note.name);
-
-                                if (existingIndex >= 0) {
-                                  // remove note
-                                  chNotes.splice(existingIndex, 1);
-                                } else {
-                                  // add note
-                                  chNotes.push({ step: stepIdx, note: note.name, length: 2 });
-                                }
-
-                                return {
-                                  ...prev,
-                                  [activePattern]: {
-                                    ...pat,
-                                    [selectedChannelId]: chNotes
-                                  }
-                                };
-                              });
-                            }}
-                            className={`h-6 border-b border-r border-zinc-800/80 cursor-pointer relative transition-colors ${
-                              isEvenBeat ? 'bg-[#23272c]' : 'bg-[#1e2226]'
-                            } hover:bg-zinc-700/40`}
-                          >
-                            {/* Render Active Note Block */}
-                            {noteBlock && (
-                              <div
-                                className="absolute inset-y-0.5 left-0.5 right-0.5 rounded bg-gradient-to-r from-orange-500 to-amber-500 border border-orange-300 flex items-center px-1 text-[9px] font-mono font-bold text-zinc-950 shadow-md overflow-hidden z-10"
-                                title={`${noteBlock.note} (Step ${noteBlock.step})`}
-                              >
-                                {noteBlock.note}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <StudioPianoRoll
+            project={project}
+            activePattern={activePattern}
+            selectedChannelId={selectedChannelId}
+            onSelectChannel={setSelectedChannelId}
+            setPianoNotes={setPianoNotes}
+            setStepData={setStepData}
+            preview={preview}
+            playStep={activePatternSounding ? stepInBar : null}
+          />
         )}
 
         {/* VIEW 3: MULTI-CHANNEL MIXER & EFFECTS */}

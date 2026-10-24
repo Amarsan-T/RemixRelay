@@ -136,6 +136,11 @@ export function createStudioProject(): StudioProject {
   return {
     bpm: PRESETS['Trap Heat'].bpm, loop: true, metronome: false,
     channels: structuredClone(INITIAL_CHANNELS), stepData, pianoNotes,
+    // Pattern 1 for the first 4 bars, so SONG mode plays something right away.
+    song: {
+      bars: 8, trackCount: 4,
+      clips: [0, 1, 2, 3].map((bar) => ({ id: `clip-${bar}`, patternId: '1', track: 0, startBar: bar })),
+    },
     mixerTracks: [
       { id: 0, name: 'Master', vol: 0.85, pan: 0, filter: 20000, delay: 0, dist: 0, mute: false, solo: false },
       { id: 1, name: 'Kick / Low', vol: 0.9, pan: 0, filter: 20000, delay: 0, dist: 0.1, mute: false, solo: false },

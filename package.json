@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "convex": "^1.48.0",
     "lucide-react": "^1.61.0",
     "react": "^19.3.1",

@@ -21,5 +21,6 @@ export function useStudioProject() {
     setBpm: fieldSetter('bpm'), setLoop: fieldSetter('loop'), setMetronome: fieldSetter('metronome'),
     setChannels: fieldSetter('channels'), setStepData: fieldSetter('stepData'),
     setPianoNotes: fieldSetter('pianoNotes'), setMixerTracks: fieldSetter('mixerTracks'),
+    setSong: fieldSetter('song'),
   }
 }

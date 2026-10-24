@@ -19,6 +19,8 @@ registerHooks({
     return nextResolve(specifier, context)
   },
   load(url, context, nextLoad) {
+    // Vite bundles stylesheets; in Node a component's CSS import is just an empty module.
+    if (url.endsWith('.css')) return { format: 'module', source: '', shortCircuit: true }
     if (url.endsWith('.tsx')) {
       const source = ts.transpileModule(readFileSync(fileURLToPath(url), 'utf8'), {
         compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2023 },
@@ -151,7 +153,7 @@ test('subscriptions, repeated stop, and terminal disposal work before audio init
 })
 
 const { createStudioProject, PRESETS } = await import('../src/studio/data.ts')
-const { toAudioPattern } = await import('../src/studio/patternAdapter.ts')
+const { toAudioPattern, toAudioSong } = await import('../src/studio/patternAdapter.ts')
 
 test('every studio preset maps all channels into valid engine data', () => {
   for (const preset of Object.values(PRESETS)) {
@@ -271,4 +273,54 @@ test('the studio renders at the React entry without allocating browser audio', a
   }
   assert.ok(!html.includes('Get started'))
   assert.ok(!html.includes('AudioContext'))
+})
+
+test('multi-bar patterns validate steps across every bar', () => {
+  const base = createDemoPattern()
+  const melody = (step) => ({ ...base.tracks[2], steps: [{ step, notes: [{ pitch: 'C4', durationSteps: 2 }] }] })
+  // One bar (the default) still stops at step 15, with the same message as before.
+  assert.throws(() => validatePattern({ ...base, tracks: [melody(16)] }), /step must be an integer from 0 to 15/)
+  validatePattern({ ...base, bars: 4, tracks: [melody(63)] })
+  assert.throws(() => validatePattern({ ...base, bars: 4, tracks: [melody(64)] }), /from 0 to 63/)
+  for (const bars of [0, 65, 1.5]) {
+    assert.throws(() => validatePattern({ ...base, bars }), /bars must be an integer from 1 to 64/)
+  }
+})
+
+test('changing the bar count of a stopped engine just replaces the pattern', () => {
+  const engine = new AudioEngine(createDemoPattern())
+  engine.setPattern({ ...createDemoPattern(), bars: 8 })
+  assert.equal(engine.getPattern().bars, 8)
+  assert.equal(engine.getState().status, 'stopped')
+  engine.dispose()
+})
+
+test('SONG mode places each playlist clip on its bar and merges overlapping patterns', () => {
+  const project = createStudioProject()
+  // Pattern 1 (Trap Heat) on bars 1 and 3; pattern 2 gets one kick, stacked on bar 3.
+  project.stepData[2].kick[8] = 1
+  project.song = {
+    bars: 4, trackCount: 2,
+    clips: [
+      { id: 'a', patternId: '1', track: 0, startBar: 0 },
+      { id: 'b', patternId: '1', track: 0, startBar: 2 },
+      { id: 'c', patternId: '2', track: 1, startBar: 2 },
+    ],
+  }
+  const song = toAudioSong(project)
+  validatePattern(song)
+  assert.equal(song.bars, 4)
+  const kicks = song.tracks.find((track) => track.id === 'kick').pattern.kick.map((hit) => hit.step)
+  // Trap Heat kicks on 0, 6, 10, then the same 32 steps later, plus pattern 2's kick at 32 + 8.
+  assert.deepEqual(kicks, [0, 6, 10, 32, 38, 40, 42])
+  const lead = song.tracks.find((track) => track.id === 'synth_lead').steps
+  assert.ok(lead.every((entry) => entry.step < 16 || entry.step >= 32), 'Empty bars stay silent')
+  assert.equal('bars' in toAudioPattern(project, 1), false, 'PAT mode output is unchanged')
+})
+
+test('notes edited in the piano roll keep their velocity in playback', () => {
+  const project = createStudioProject()
+  project.pianoNotes[1].synth_lead = [{ id: 'x', step: 0, note: 'A4', length: 2, velocity: 0.3 }]
+  const lead = toAudioPattern(project, 1).tracks.find((track) => track.id === 'synth_lead')
+  assert.equal(lead.steps[0].notes[0].velocity, 0.3)
 })
