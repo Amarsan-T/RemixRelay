@@ -3,6 +3,48 @@
 Framework-independent Tone.js engine for one 16-step bar in 4/4. No samples, React,
 Convex, or network requests are needed. Public imports come from `src/audio/index.ts`.
 
+## Integrated studio
+
+The main React/Vite app at `/` now renders Martin's `fl_studio_web_daw.tsx`.
+Its layout, four pattern slots, presets, step editing, embedded note editor, and
+mixer are preserved. It uses one `AudioEngine` created by `src/studio/useStudioAudio.ts`.
+There is no second AudioContext, native oscillator implementation, singleton engine,
+or browser-timer playback scheduler in the UI.
+
+`src/studio/useStudioProject.ts` owns one `StudioProject` state. Channels, mixer
+settings, tempo, looping, step gates, and authored notes are edited there. The pure
+`toAudioPattern(project, activePattern)` adapter is the only conversion to engine
+data. All pitched channels use their own notes regardless of which channel is
+selected. Authored notes override the default sequencer hit at that step, so a
+chord is not doubled by the pad. Turning a pitched pad off removes its notes too.
+Note editor changes update the corresponding step gate. The eight-note-per-step
+engine limit still applies; invalid edits display an error and keep the last valid
+audio snapshot. The engine's copy is for playback, never a separate editing store.
+
+The channel and insert volume gains multiply; channel and insert pans add and clamp
+to -1–1. Insert mute/solo combine with channel mute/solo. Insert effects are applied
+to each assigned channel's Tone rack. The master fader in both views edits the same
+mixer field, and the master effects are a shared bus. A master level above 100% is
+supported up to +6 dB. Per-instrument headroom and a limiter protect the mix.
+
+The previous Pause button is now the **Loop** toggle. With Loop off, Play runs one
+bar and stops; with Loop on it repeats. Space toggles Play/Stop outside form fields
+and buttons. **SONG** is disabled because song arrangement was not implemented in
+Martin's original UI. Channel audition, keyboard previews, metronome, pan, lowpass
+filter, delay, distortion, and stereo output meters all use the same Tone context.
+
+Start locally with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`:
+
+- Studio: **http://127.0.0.1:5173/**
+- Independent listening page: **http://127.0.0.1:5173/audio-test.html**
+- Developer audio checks: **http://127.0.0.1:5173/tests/audio-runtime.html** (dev only)
+
+Manual integration checks in Chrome: Play/Stop repeatedly, adjust tempo while
+playing, edit steps, switch the four patterns and presets, test mute/solo and
+volume in both the channel rack and mixer, switch Loop off, and audition a channel
+while stopped. Opening `/audio-test.html` still runs its own standalone engine on
+that separate page. No Convex, Claude integration, or Shawn component is changed.
+
 ## Listen
 
 Run `npm run dev`, then open **http://localhost:5173/audio-test.html** (use the port
@@ -21,7 +63,7 @@ printed by Vite if 5173 is occupied). Click **Play** to unlock browser audio.
 
 Run `npm run test:audio` for data/API regression tests (Node 24, no browser needed).
 With the dev server running, open `/tests/audio-runtime.html` and click **Run audio
-checks** for real browser signal checks covering all seven synthesized voices,
+checks** for real browser signal checks covering all eight synthesized voices,
 stop silence, looping, live updates, muting, one-shot playback, context disposal,
 and pending-start cancellation. This developer test page is served only in dev;
 the listening page is included in production builds.
@@ -71,6 +113,8 @@ instance on each effect setup. Never reuse a disposed instance.
 | --- | --- |
 | `new AudioEngine(pattern?)` | Validate/copy a pattern; defaults to demo A. No AudioContext yet. |
 | `initialize(): Promise<void>` | Lazily create/resume audio from a user gesture. Optional; `play()` does this too. |
+| `previewTrack(id, { drum?, pitch?, durationSteps? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
+| `getOutputLevels(): [number, number]` | Read stereo RMS amplitudes, 0–1, for meters; never initializes audio. |
 | `play(): Promise<void>` | Start at step 0, or keep the current run. Concurrent calls share initialization. Rejects on audio setup failure. |
 | `stop(): void` | Immediately silence, clear owned events/voices, rewind; cancel an in-flight Play. Repeated calls are safe. |
 | `setBpm(bpm)` | Set 40–240 BPM without restarting the Transport. |
@@ -131,7 +175,11 @@ engine.setPattern(pattern)
 - Pitches use capital A–G, optional `#`/`b`, octave 0–8 (e.g. `C2`, `F#4`, `Bb3`).
 - Optional velocities are 0–1; default 0.8. Zero is silent.
 - Track types are `drums`, `bass`, `melody`, `chords`; ids must be unique/nonempty.
-- All four drum voice arrays are required; an empty array is silence.
+- All four original drum voice arrays are required; `clap` is optional. Empty arrays are silence.
+- Optional track `pan` is -1–1. Optional `effects` accepts `filterHz` (20–20000),
+  `delay` (0–0.8), and `distortion` (0–0.8). Omitted values are centered/dry.
+- Optional `master` accepts `volumeDb` (-60–6), `muted`, `pan`, and `effects`.
+  Omitted master settings preserve the original engine output level.
 - Empty note arrays are rests. Up to eight notes per step form a chord. Combine
   duplicate/enharmonic pitches into one note. Duplicate step positions are rejected
   within each drum voice or pitched track; combine notes at the same position.
@@ -181,14 +229,16 @@ Existing app synths can continue to use them independently.
 Updates affect the next not-yet-scheduled step without rewinding. Tone schedules
 about 50 ms ahead, so a just-scheduled hit may still sound after an edit. Sustained
 notes finish their existing envelopes; changing a track's type/removing it disposes
-its voices immediately. A closed hat chokes an open hat in the same drum track.
+its voices immediately. A closed hat chokes open hats across drum tracks.
 Mute gates sustained output immediately with a 5 ms ramp; unmuting can reveal a
 still-decaying tail. Note durations are converted to seconds at onset; a later BPM
 change affects future note durations and step timing, while held notes retain
 their original duration. Notes can sustain over loop boundaries. One-shot mode
 silences tails at the bar boundary.
 
-Stop disposes voices so old delayed releases cannot cut notes in the next run.
+Stop gates the final output after all effects and disposes voices/effects, so delay
+tails cannot sound after Stop or reappear in the next run. Old delayed note releases
+cannot cut notes in the next run.
 Dispose also closes the private AudioContext. Stop/dispose while audio is starting
 cancel that start; a stale async continuation cannot restart playback. Tone Draw
 drives only UI notifications, so background-tab rendering throttling does not

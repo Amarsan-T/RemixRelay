@@ -3,7 +3,7 @@ export const STEP_COUNT = 16
 export const MIN_BPM = 40
 export const MAX_BPM = 240
 
-export const DRUM_VOICES = ['kick', 'snare', 'closedHat', 'openHat'] as const
+export const DRUM_VOICES = ['kick', 'snare', 'closedHat', 'openHat', 'clap'] as const
 export type DrumVoice = (typeof DRUM_VOICES)[number]
 export type InstrumentType = 'bass' | 'melody' | 'chords'
 
@@ -32,6 +32,20 @@ export interface DrumPattern {
   snare: DrumStep[]
   closedHat: DrumStep[]
   openHat: DrumStep[]
+  clap?: DrumStep[]
+}
+
+export interface EffectsSettings {
+  filterHz?: number
+  delay?: number
+  distortion?: number
+}
+
+export interface MixSettings {
+  volumeDb?: number
+  muted?: boolean
+  pan?: number
+  effects?: EffectsSettings
 }
 
 export interface TrackSettings {
@@ -41,6 +55,8 @@ export interface TrackSettings {
   muted: boolean
   /** Track output in decibels, -60 through 0. */
   volumeDb: number
+  pan?: number
+  effects?: EffectsSettings
 }
 
 export interface DrumTrack extends TrackSettings {
@@ -60,6 +76,14 @@ export interface MusicalPattern {
   bpm: number
   loop: boolean
   tracks: Track[]
+  /** Optional master bus. Defaults to unity gain, centered pan, no effects. */
+  master?: MixSettings
+}
+
+export interface PreviewOptions {
+  drum?: DrumVoice
+  pitch?: string
+  durationSteps?: number
 }
 
 export interface PlaybackState {

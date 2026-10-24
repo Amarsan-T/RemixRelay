@@ -17,6 +17,21 @@ function validateVelocity(value: unknown) {
   requireValue(value === undefined || inRange(value, 0, 1), 'velocity must be between 0 and 1')
 }
 
+function validateMix(value: Record<string, unknown>, master = false) {
+  requireValue(value.pan === undefined || inRange(value.pan, -1, 1), 'pan must be between -1 and 1')
+  if (master) {
+    requireValue(value.volumeDb === undefined || inRange(value.volumeDb, -60, 6), 'master volumeDb must be between -60 and 6')
+    requireValue(value.muted === undefined || typeof value.muted === 'boolean', 'master muted must be a boolean')
+  }
+  if (value.effects !== undefined) {
+    requireValue(isRecord(value.effects), 'effects must be an object')
+    const fx = value.effects
+    requireValue(fx.filterHz === undefined || inRange(fx.filterHz, 20, 20000), 'filterHz must be between 20 and 20000')
+    requireValue(fx.delay === undefined || inRange(fx.delay, 0, 0.8), 'delay must be between 0 and 0.8')
+    requireValue(fx.distortion === undefined || inRange(fx.distortion, 0, 0.8), 'distortion must be between 0 and 0.8')
+  }
+}
+
 function validateSteps(value: unknown, label: string, pitched: boolean) {
   requireValue(Array.isArray(value) && value.length <= STEP_COUNT, `${label} must be an array of up to 16 steps`)
   const seen = new Set<number>()
@@ -50,6 +65,10 @@ export function validatePattern(value: unknown): asserts value is MusicalPattern
   requireValue(isRecord(value), 'expected an object')
   requireValue(inRange(value.bpm, MIN_BPM, MAX_BPM), `bpm must be between ${MIN_BPM} and ${MAX_BPM}`)
   requireValue(typeof value.loop === 'boolean', 'loop must be a boolean')
+  if (value.master !== undefined) {
+    requireValue(isRecord(value.master), 'master must be an object')
+    validateMix(value.master, true)
+  }
   requireValue(Array.isArray(value.tracks) && value.tracks.length <= 32, 'tracks must be an array of up to 32 tracks')
   const ids = new Set<string>()
   for (const track of value.tracks) {
@@ -60,9 +79,13 @@ export function validatePattern(value: unknown): asserts value is MusicalPattern
     requireValue(typeof track.name === 'string', 'track name must be a string')
     requireValue(typeof track.muted === 'boolean', 'track muted must be a boolean')
     requireValue(inRange(track.volumeDb, -60, 0), 'track volumeDb must be between -60 and 0')
+    validateMix(track)
     if (track.type === 'drums') {
       requireValue(isRecord(track.pattern), 'drum pattern must be an object')
-      for (const voice of DRUM_VOICES) validateSteps(track.pattern[voice], voice, false)
+      for (const voice of DRUM_VOICES) {
+        if (voice === 'clap' && track.pattern.clap === undefined) continue
+        validateSteps(track.pattern[voice], voice, false)
+      }
     } else {
       requireValue(track.type === 'bass' || track.type === 'melody' || track.type === 'chords', 'unknown track type')
       validateSteps(track.steps, track.id, true)

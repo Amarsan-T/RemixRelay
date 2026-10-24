@@ -42,7 +42,7 @@ button.addEventListener('click', async () => {
     const context = engine.context
     const analyser = context.createAnalyser()
     analyser.fftSize = 2048
-    engine.limiter.disconnect(context.destination)
+    engine.limiter.disconnect()
     engine.limiter.connect(analyser)
     analyser.connect(context.rawContext.destination)
     const demo = createDemoPattern()

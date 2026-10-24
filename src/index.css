@@ -1,29 +1,18 @@
-@import 'tailwindcss';
-
-/* Design tokens from the Figma Make UI. Each --color-* becomes a Tailwind
-   class: --color-accent -> bg-accent, text-accent, border-accent, ... */
-@theme {
-  --font-sans: 'DM Sans', system-ui, 'Segoe UI', sans-serif;
-  --font-mono: ui-monospace, Consolas, monospace;
-
-  --color-canvas: #f7f7f5; /* page background */
-  --color-panel: #fbfbfa; /* sidebar */
-  --color-line: #e8e8e4; /* borders */
-  --color-line-strong: #d8d8d2;
-  --color-ink: #1c1c1b; /* main text */
-  --color-muted: #6f6f69; /* secondary text */
-  --color-accent: #5f5af6; /* buttons, highlights */
-  --color-accent-hover: #4f4ae2;
-}
+@import "tailwindcss";
+@source "../fl_studio_web_daw.tsx";
 
 :root {
-  /* Used by PianoRoll.css */
-  --mono: var(--font-mono);
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  color-scheme: dark;
+  color: #e4e4e7;
+  background: #181a1d;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-body {
-  background: var(--color-canvas);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
+html, body, #root { margin: 0; width: 100%; min-height: 100%; }
+button:not(:disabled) { cursor: pointer; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid #fb923c; outline-offset: 2px; }
