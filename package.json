@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test:audio": "node --test tests/audio.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -24,5 +25,8 @@
     "oxlint": "^1.88.0",
     "typescript": "~6.0.3",
     "vite": "^8.3.4"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true
   }
 }
