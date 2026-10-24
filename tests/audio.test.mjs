@@ -153,7 +153,7 @@ test('subscriptions, repeated stop, and terminal disposal work before audio init
 })
 
 const { createStudioProject, PRESETS } = await import('../src/studio/data.ts')
-const { toAudioPattern, toAudioSong } = await import('../src/studio/patternAdapter.ts')
+const { toAudioPattern, toAudioSong, patternStepAt } = await import('../src/studio/patternAdapter.ts')
 
 test('every studio preset maps all channels into valid engine data', () => {
   for (const preset of Object.values(PRESETS)) {
@@ -279,8 +279,9 @@ test('the studio renders on its own without allocating browser audio', async () 
   const html = renderToStaticMarkup(React.createElement(Studio))
   assert.ok(!html.includes('aria-label="Home"'), 'HOME only appears when there is a home to go to')
   assert.ok(renderToStaticMarkup(React.createElement(Studio, { onHome: () => {}, projectName: 'My Song' })).includes('My Song'))
-  for (const text of ['REMIXRELAY', 'Channel Rack', 'Trap Heat', 'Kick 808', 'Retro Lead']) assert.ok(html.includes(text))
-  for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Kick 808 step 1']) {
+  // The studio opens on the playlist; the channel rack is one tab away.
+  for (const text of ['REMIXRELAY', 'Playlist • Song', 'Pattern 1', 'Track 1', 'Channel Rack', 'Trap Heat']) assert.ok(html.includes(text), `Missing ${text}`)
+  for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Pattern playback mode', 'Song playback mode']) {
     assert.ok(html.includes(`aria-label="${name}"`), `Missing studio control ${name}`)
   }
   assert.ok(!html.includes('Get started'))
@@ -335,4 +336,51 @@ test('notes edited in the piano roll keep their velocity in playback', () => {
   project.pianoNotes[1].synth_lead = [{ id: 'x', step: 0, note: 'A4', length: 2, velocity: 0.3 }]
   const lead = toAudioPattern(project, 1).tracks.find((track) => track.id === 'synth_lead')
   assert.equal(lead.steps[0].notes[0].velocity, 0.3)
+})
+
+test('a channel instrument preset reaches the engine and unknown presets are rejected', async () => {
+  const { SOUND_PRESETS } = await import('../src/audio/index.ts')
+  assert.deepEqual(SOUND_PRESETS.map((s) => s.name), ['Grand Piano', 'Synth Lead', 'Deep Bass', 'Warm Pad', 'Pluck', 'Chiptune'])
+  const project = createStudioProject()
+  const lead = (p) => toAudioPattern(p, 1).tracks.find((track) => track.id === 'synth_lead')
+  assert.equal('sound' in lead(project), false, 'Channels without a preset keep the default synth')
+  project.channels = project.channels.map((c) => c.id === 'synth_lead' ? { ...c, sound: 'warm-pad' } : c)
+  const pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  assert.equal(lead(project).sound, 'warm-pad')
+  const bad = { ...pattern, tracks: pattern.tracks.map((t) => t.id === 'synth_lead' ? { ...t, sound: 'kazoo' } : t) }
+  assert.throws(() => validatePattern(bad), /unknown sound preset kazoo/)
+})
+
+test('patterns can be any number of steps long', () => {
+  const project = createStudioProject()
+  project.patternSteps = { 1: 24 }
+  project.stepData[1].kick[20] = 1
+  const odd = toAudioPattern(project, 1)
+  validatePattern(odd)
+  assert.equal(odd.steps, 24, 'A 24-step pattern loops after 24 steps')
+  assert.ok(odd.tracks.find((t) => t.id === 'kick').pattern.kick.some((hit) => hit.step === 20))
+  project.patternSteps = { 1: 32 }
+  const twoBars = toAudioPattern(project, 1)
+  assert.equal(twoBars.bars, 2)
+  assert.equal('steps' in twoBars, false, 'Whole-bar lengths use bars')
+  assert.throws(() => validatePattern({ ...odd, steps: 0 }), /steps must be an integer/)
+})
+
+test('long patterns span several playlist bars and stop at the end of the song', () => {
+  const project = createStudioProject()
+  project.patternSteps = { 2: 32 }
+  project.stepData[2].kick = new Array(32).fill(0)
+  project.stepData[2].kick[0] = 1
+  project.stepData[2].kick[24] = 1
+  project.song = { bars: 8, trackCount: 1, clips: [
+    { id: 'a', patternId: '2', track: 0, startBar: 0 },
+    { id: 'b', patternId: '2', track: 0, startBar: 7 }, // second half hangs off the end
+  ] }
+  const song = toAudioSong(project)
+  validatePattern(song)
+  assert.deepEqual(song.tracks.find((t) => t.id === 'kick').pattern.kick.map((h) => h.step), [0, 24, 112])
+  assert.equal(patternStepAt(project, 2, 20), 20)
+  assert.equal(patternStepAt(project, 2, 40), null, 'Bars 3-7 have no clip of pattern 2')
+  assert.equal(patternStepAt(project, 2, 115), 3)
 })

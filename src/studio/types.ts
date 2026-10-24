@@ -9,6 +9,8 @@ export interface StudioChannel {
   solo: boolean
   type: 'drum' | 'pitched' | 'synth'
   defaultNote?: string
+  /** Instrument preset (SOUND_PRESETS id). Unset plays the default studio synth. */
+  sound?: string
 }
 
 export interface PianoNote {
@@ -72,4 +74,6 @@ export interface StudioProject {
   pianoNotes: PianoNotes
   mixerTracks: MixerTrack[]
   song: StudioSong
+  /** Length of each pattern in steps (16 = one bar). Patterns not listed are 16. */
+  patternSteps?: Record<number, number>
 }

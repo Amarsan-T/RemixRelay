@@ -7,7 +7,8 @@ import { MAX_BPM, MIN_BPM } from './src/audio';
 import { PRESETS } from './src/studio/data';
 import { useStudioProject } from './src/studio/useStudioProject';
 import { useStudioAudio, type PlayMode } from './src/studio/useStudioAudio';
-import { patternsPerBar } from './src/studio/patternAdapter';
+import { patternLength, patternStepAt } from './src/studio/patternAdapter';
+import { PatternLengthControl } from './src/studio/PatternLengthControl';
 import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
 import { StudioPlaylist } from './src/studio/StudioPlaylist';
 import type { MixerParam, StepData, StudioChannel, StudioProject } from './src/studio/types';
@@ -26,7 +27,7 @@ type StudioProps = {
 export default function App({ initialProject, projectName, onProjectChange, onHome }: StudioProps) {
   const {
     project, setBpm, setLoop, setMetronome, setChannels,
-    setStepData, setPianoNotes, setMixerTracks, setSong,
+    setStepData, setPianoNotes, setMixerTracks, setSong, setPatternSteps,
   } = useStudioProject(initialProject);
 
   // Report edits upward. The callback sits in a ref so a new function from the
@@ -39,7 +40,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
   const { bpm, loop, metronome, channels, stepData, pianoNotes, mixerTracks } = project;
-  const [activeTab, setActiveTab] = useState('channelRack');
+  // Projects open on the song arrangement.
+  const [activeTab, setActiveTab] = useState('playlist');
   const [selectedChannelId, setSelectedChannelId] = useState('synth_lead');
   const [activePattern, setActivePattern] = useState(1);
   // PAT loops the selected pattern; SONG plays the playlist.
@@ -49,9 +51,11 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   const currentStep = playback.step ?? 0;
   // In SONG mode the playhead counts across bars; the 16-step views show its position in the bar.
   const stepInBar = currentStep % 16;
-  // Whether the pattern on screen is what you're hearing right now.
-  const activePatternSounding = isPlaying && (playMode === 'pattern' ||
-    (patternsPerBar(project)[Math.floor(currentStep / 16)]?.includes(activePattern) ?? false));
+  // Patterns can be any number of steps long (16 = one bar).
+  const patternSteps = patternLength(project, activePattern);
+  // Where the pattern on screen is up to, or null when you aren't hearing it.
+  const patternPlayStep = !isPlaying ? null
+    : playMode === 'pattern' ? currentStep : patternStepAt(project, activePattern, currentStep);
   const masterVol = mixerTracks.find((track) => track.id === 0)?.vol ?? 0.85;
   const tapTimesRef = useRef<number[]>([]);
   const masterMeterCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -145,7 +149,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
     const wasActive = stepData[activePattern]?.[channelId]?.[stepIndex] === 1 || hasNotes;
     setStepData(prev => {
       const p = prev[activePattern] || {};
-      const chSteps = [...(p[channelId] || new Array(16).fill(0))];
+      const chSteps = [...(p[channelId] || new Array(patternSteps).fill(0))];
       chSteps[stepIndex] = wasActive ? 0 : 1;
       return {
         ...prev,
@@ -192,7 +196,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
     setStepData(prev => {
       const empty: StepData[number] = {};
       channels.forEach(ch => {
-        empty[ch.id] = new Array(16).fill(0);
+        empty[ch.id] = new Array(patternSteps).fill(0);
       });
       return { ...prev, [activePattern]: empty };
     });
@@ -204,7 +208,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
     setStepData(prev => {
       const randomized: StepData[number] = {};
       channels.forEach(ch => {
-        randomized[ch.id] = new Array(16).fill(0).map(() => (Math.random() > 0.72 ? 1 : 0));
+        randomized[ch.id] = new Array(patternSteps).fill(0).map(() => (Math.random() > 0.72 ? 1 : 0));
       });
       return { ...prev, [activePattern]: randomized };
     });
@@ -268,8 +272,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             <button
               aria-label="Song playback mode"
               aria-pressed={playMode === 'song'}
-              title="Play the playlist, and open it"
-              onClick={() => { setPlayMode('song'); setActiveTab('playlist'); }}
+              title="Play the whole playlist"
+              onClick={() => setPlayMode('song')}
               className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'song' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               SONG
@@ -545,7 +549,13 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                 </h2>
               </div>
               <div className="flex items-center gap-2 text-[11px] text-zinc-400 font-mono">
-                <span>16 Steps</span>
+                <PatternLengthControl
+                  project={project}
+                  pattern={activePattern}
+                  setPatternSteps={setPatternSteps}
+                  setStepData={setStepData}
+                  setPianoNotes={setPianoNotes}
+                />
                 <span className="text-zinc-600">|</span>
                 <span>Swing: 0%</span>
               </div>
@@ -554,7 +564,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             {/* Channels & Step Grid */}
             <div className="divide-y divide-zinc-800/80">
               {channels.map((channel) => {
-                const currentPatternSteps = stepData[activePattern]?.[channel.id] || new Array(16).fill(0);
+                const currentPatternSteps = stepData[activePattern]?.[channel.id] || new Array(patternSteps).fill(0);
                 const isSelected = selectedChannelId === channel.id;
 
                 return (
@@ -661,10 +671,10 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
 
                     {/* Right: Step Sequencer Pads (FL 4-beat color grouping) */}
                     <div className="flex items-center gap-1 pl-4 flex-1 overflow-x-auto">
-                      {Array.from({ length: 16 }).map((_, stepIdx) => {
+                      {Array.from({ length: patternSteps }).map((_, stepIdx) => {
                         const isStepActive = currentPatternSteps[stepIdx] === 1 || (channel.type !== 'drum' &&
                           (pianoNotes[activePattern]?.[channel.id]?.some(note => note.step === stepIdx) ?? false));
-                        const isCurrentPlayStep = stepInBar === stepIdx && activePatternSounding;
+                        const isCurrentPlayStep = patternPlayStep === stepIdx;
                         // FL Studio 4-beat grouping (alternating colors every 4 steps)
                         const groupIdx = Math.floor(stepIdx / 4);
                         const isEvenGroup = groupIdx % 2 === 0;
@@ -719,10 +729,12 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             activePattern={activePattern}
             selectedChannelId={selectedChannelId}
             onSelectChannel={setSelectedChannelId}
+            setChannels={setChannels}
             setPianoNotes={setPianoNotes}
             setStepData={setStepData}
             preview={preview}
-            playStep={activePatternSounding ? stepInBar : null}
+            playStep={patternPlayStep}
+            setPatternSteps={setPatternSteps}
           />
         )}
 

@@ -2,6 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { ListMusic, Plus, Trash2 } from 'lucide-react'
 import { Playlist, type ClipPreviewData, type PlaylistPattern } from '../components/Playlist'
 import { STEP_COUNT } from '../audio/types'
+import { patternLength } from './patternAdapter'
 import type { StudioProject, StudioSong } from './types'
 
 type Props = {
@@ -28,7 +29,8 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
     id: String(n),
     name: `Pattern ${n}`,
     color: PATTERN_COLORS[n - 1],
-    bars: 1,
+    // Long patterns span several bars; 24 steps is one and a half.
+    bars: patternLength(project, n) / STEP_COUNT,
     preview: patternPreview(project, n),
   }))
 
@@ -117,14 +119,15 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
 
 /** Clip drawing: one row per channel, a block for each hit or note in the pattern. */
 function patternPreview(project: StudioProject, pattern: number): ClipPreviewData {
+  const length = patternLength(project, pattern)
   const blocks: ClipPreviewData['blocks'] = []
   project.channels.forEach((channel, row) => {
     const notes = project.pianoNotes[pattern]?.[channel.id] ?? []
     const gates = project.stepData[pattern]?.[channel.id] ?? []
-    gates.forEach((on, step) => {
+    gates.slice(0, length).forEach((on, step) => {
       if (on === 1 && !notes.some((n) => n.step === step)) blocks.push({ x: step, y: row, w: 1 })
     })
-    for (const n of notes) blocks.push({ x: n.step, y: row, w: Math.min(n.length, STEP_COUNT - n.step) })
+    for (const n of notes) if (n.step < length) blocks.push({ x: n.step, y: row, w: Math.min(n.length, length - n.step) })
   })
-  return { width: STEP_COUNT, height: Math.max(1, project.channels.length), blocks }
+  return { width: length, height: Math.max(1, project.channels.length), blocks }
 }
