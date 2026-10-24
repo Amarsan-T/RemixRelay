@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RemixRelay audio runtime checks</title>
+    <style>
+      body { color: #e8ecf6; background: #10131c; font: 16px/1.6 system-ui; max-width: 850px; padding: 32px; margin: auto; }
+      button { padding: 12px 18px; font: inherit; cursor: pointer; }
+      pre { white-space: pre-wrap; }
+      a { color: #cbbfff; }
+    </style>
+  </head>
+  <body>
+    <h1>Audio runtime checks</h1>
+    <p>Runs real Web Audio synthesis and lifecycle checks. Short instrument sounds will play.</p>
+    <button id="run" type="button">Run audio checks</button>
+    <pre id="results" role="status" aria-live="polite">Ready</pre>
+    <a href="/audio-test.html">Open listening page</a>
+    <script type="module" src="/tests/audio-runtime.mjs"></script>
+  </body>
+</html>

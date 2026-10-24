@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
+    "test:audio": "node --test tests/audio.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -17,12 +18,17 @@
     "tone": "^15.1.22"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "oxlint": "^1.88.0",
+    "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
     "vite": "^8.3.4"
+  },
+  "allowScripts": {
+    "esbuild@0.27.0": true
   }
 }
