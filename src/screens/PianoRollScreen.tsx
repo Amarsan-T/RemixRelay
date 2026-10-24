@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Play, Square, Trash2 } from 'lucide-react'
 import { Breadcrumbs } from '../components/Breadcrumbs'
-import { PianoRoll } from '../components/PianoRoll'
+import { PianoRoll, type PianoRollMode } from '../components/PianoRoll'
 import * as engine from '../music/engine'
 import { INSTRUMENT_PRESETS, LOOP_PRESETS, getInstrumentPreset, loopNotes } from '../music/presets'
 import { STEPS_PER_BAR, type Pattern, type Song } from '../music/types'
@@ -10,8 +10,6 @@ type Props = {
   song: Song
   pattern: Pattern
   onChangePattern: (change: (pattern: Pattern) => Pattern) => void
-  /** For the tempo, which belongs to the whole song. */
-  onChangeSong: (change: (song: Song) => Song) => void
   onHome: () => void
   /** Back to the song's playlist. */
   onBack: () => void
@@ -19,11 +17,17 @@ type Props = {
 
 const BAR_OPTIONS = [1, 2, 4, 8]
 
+const MODE_TABS: { mode: PianoRollMode; label: string }[] = [
+  { mode: 'notes', label: 'Notes' },
+  { mode: 'velocity', label: 'Velocity' },
+]
+
 // Edits the notes of one pattern. Changes show up in the playlist right away,
 // in every clip that uses this pattern.
-export function PianoRollScreen({ song, pattern, onChangePattern, onChangeSong, onHome, onBack }: Props) {
+export function PianoRollScreen({ song, pattern, onChangePattern, onHome, onBack }: Props) {
   const [playing, setPlaying] = useState(false)
   const [playStep, setPlayStep] = useState<number | null>(null)
+  const [mode, setMode] = useState<PianoRollMode>('notes')
 
   // The audio loop reads the latest notes through this ref.
   const timelineRef = useRef(engine.patternTimeline(pattern))
@@ -49,9 +53,9 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onChangeSong, 
     setPlaying(true)
   }
 
-  function preview(pitch: number) {
+  function preview(pitch: number, velocity?: number) {
     void engine.unlockAudio()
-    engine.previewNote(pattern.instrumentId, pitch)
+    engine.previewNote(pattern.instrumentId, pitch, velocity)
   }
 
   function loadLoop(id: string) {
@@ -143,20 +147,16 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onChangeSong, 
             </select>
           </label>
 
-          <label className="flex flex-col gap-1 text-xs text-muted">
-            BPM
-            <input
-              type="number"
-              min={40}
-              max={220}
-              value={song.bpm}
-              onChange={(e) => {
-                const bpm = Number(e.target.value)
-                if (bpm >= 40 && bpm <= 220) onChangeSong((s) => ({ ...s, bpm }))
-              }}
-              className={`${field} w-18`}
-            />
-          </label>
+          {/* Tempo belongs to the whole song, so it's only shown here. Change it in the Playlist. */}
+          <div className="flex flex-col gap-1 text-xs text-muted">
+            Tempo
+            <span
+              className="flex h-9 items-center px-1 text-sm text-ink"
+              title="Set the tempo on the song's Playlist screen"
+            >
+              {song.bpm} BPM
+            </span>
+          </div>
 
           <label className="flex flex-col gap-1 text-xs text-muted">
             Bars
@@ -182,11 +182,30 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onChangeSong, 
           </button>
         </div>
 
-        <p className="mt-4 mb-3 flex items-center gap-2 text-sm text-muted">
-          <span className="size-3 shrink-0 rounded-sm" style={{ background: instrument.color }} />
-          {instrument.name}: {instrument.description}. Click to draw, drag to move or stretch,
-          double-click or right-click to delete. Ctrl + wheel zooms time, Ctrl + middle-drag zooms pitch.
-        </p>
+        <div className="mt-5 mb-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {/* Notes / Velocity tabs */}
+          <div role="tablist" className="flex rounded-lg border border-line bg-white p-0.5">
+            {MODE_TABS.map((tab) => (
+              <button
+                key={tab.mode}
+                type="button"
+                role="tab"
+                aria-selected={mode === tab.mode}
+                onClick={() => setMode(tab.mode)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${mode === tab.mode ? 'bg-accent text-white' : 'text-muted hover:text-ink'}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+
+          <p className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted">
+            <span className="size-3 shrink-0 rounded-sm" style={{ background: instrument.color }} />
+            {mode === 'notes'
+              ? `${instrument.name}: click to draw, drag to move or stretch, double-click or right-click to delete. Ctrl + wheel zooms time, Ctrl + middle-drag zooms pitch.`
+              : 'Notes are locked. Click or drag a slider (right/up = louder). Shift/Ctrl+click or drag a box to select several, Ctrl+A for all, Esc to clear.'}
+          </p>
+        </div>
 
         <PianoRoll
           notes={pattern.notes}
@@ -195,6 +214,7 @@ export function PianoRollScreen({ song, pattern, onChangePattern, onChangeSong, 
           playStep={playStep}
           color={instrument.color}
           onPreview={preview}
+          mode={mode}
         />
       </div>
     </>

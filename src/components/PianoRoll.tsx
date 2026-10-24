@@ -34,6 +34,13 @@ const WHEEL_ZOOM_SPEED = 0.002
 /** How fast dragging zooms: 100px of mouse travel is about 2.7x. */
 const DRAG_ZOOM_SPEED = 0.01
 
+/** New notes start at 50 out of 100. */
+const DEFAULT_VELOCITY = 0.5
+/** Mouse travel for the full 0-100 velocity range when dragging a slider. */
+const VELOCITY_DRAG_PX = 150
+/** Gap between a note's edge and its velocity slider. */
+const SLIDER_INSET = 3
+
 // Top row is the highest pitch, like every DAW.
 const PITCHES = Array.from({ length: HIGHEST - LOWEST + 1 }, (_, i) => HIGHEST - i)
 
@@ -44,17 +51,27 @@ type Props = {
   /** Step the playhead is on, or null when stopped. */
   playStep: number | null
   color: string
-  onPreview: (pitch: number) => void
+  onPreview: (pitch: number, velocity?: number) => void
+  /** 'notes' draws and moves notes; 'velocity' locks them and edits loudness instead. */
+  mode: PianoRollMode
 }
+
+export type PianoRollMode = 'notes' | 'velocity'
 
 type Drag =
   | { kind: 'move'; id: string; grabStep: number; grabPitch: number; origin: Note }
   | { kind: 'resize'; id: string; origin: Note }
 
+/** A velocity slider drag. Every selected note moves by the same amount from where it started. */
+type VelocityDrag = { grabbedId: string; startX: number; startY: number; start: Map<string, number> }
+
+/** Box selection on empty grid space, in grid pixels. */
+type Marquee = { x0: number; y0: number; x1: number; y1: number; additive: boolean }
+
 /** State for a Ctrl + middle-button vertical zoom in progress. */
 type VerticalZoom = { startY: number; startCellH: number }
 
-export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }: Props) {
+export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, mode }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
@@ -69,6 +86,36 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
   const cellHRef = useRef(cellH)
   // Scroll position to apply right after a zoom re-renders the grid.
   const pendingScroll = useRef<{ left?: number; top?: number } | null>(null)
+
+  // Velocity mode: which notes are selected, and any drag in progress.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  // The box lives in a ref for the pointer handlers (always current, even between
+  // renders) and in state so it gets drawn.
+  const [marquee, setMarquee] = useState<Marquee | null>(null)
+  const marqueeRef = useRef<Marquee | null>(null)
+  const setBox = (box: Marquee | null) => {
+    marqueeRef.current = box
+    setMarquee(box)
+  }
+  const velocityDrag = useRef<VelocityDrag | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
+
+  // Velocity mode shortcuts: Ctrl+A selects every note, Escape clears.
+  useEffect(() => {
+    if (mode !== 'velocity') return
+    function onKey(e: KeyboardEvent) {
+      const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement
+      if (typing) return
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') {
+        e.preventDefault()
+        setSelected(new Set(notes.map((n) => n.id)))
+      } else if (e.key === 'Escape') {
+        setSelected(new Set())
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mode, notes])
 
   // Start scrolled to around middle C instead of the top of the range.
   useEffect(() => {
@@ -172,13 +219,17 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
 
   function onGridPointerDown(e: PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return
+    if (mode === 'velocity') {
+      startMarquee(e)
+      return
+    }
     const { step, pitch } = cellAt(e)
     const note: Note = {
       id: newId(),
       pitch,
       start: step,
       duration: Math.min(lastDuration.current, steps - step),
-      velocity: 0.8,
+      velocity: DEFAULT_VELOCITY,
     }
     onChange([...notes, note])
     onPreview(pitch)
@@ -202,7 +253,112 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
     gridRef.current!.setPointerCapture(e.pointerId)
   }
 
+  // ---- Velocity mode ------------------------------------------------------
+
+  /** Grid position of the pointer in pixels. */
+  function gridPoint(e: PointerEvent) {
+    const rect = gridRef.current!.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  function startMarquee(e: PointerEvent<HTMLDivElement>) {
+    const { x, y } = gridPoint(e)
+    const additive = e.shiftKey || e.ctrlKey || e.metaKey
+    setBox({ x0: x, y0: y, x1: x, y1: y, additive })
+    gridRef.current!.setPointerCapture(e.pointerId)
+  }
+
+  /** Notes touching the box. */
+  function notesInBox(box: Marquee): Set<string> {
+    const left = Math.min(box.x0, box.x1)
+    const right = Math.max(box.x0, box.x1)
+    const top = Math.min(box.y0, box.y1)
+    const bottom = Math.max(box.y0, box.y1)
+    const hit = notes.filter((n) => {
+      const nLeft = n.start * cellW
+      const nTop = (HIGHEST - n.pitch) * cellH
+      return nLeft < right && nLeft + n.duration * cellW > left && nTop < bottom && nTop + cellH > top
+    })
+    return new Set(hit.map((n) => n.id))
+  }
+
+  function onVelocityPointerDown(e: PointerEvent<HTMLDivElement>, note: Note) {
+    if (e.button !== 0) return
+    e.stopPropagation()
+
+    // Shift/Ctrl+click adds a note to the selection, or removes it if already in.
+    let ids: Set<string>
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      ids = new Set(selected)
+      if (ids.has(note.id)) {
+        ids.delete(note.id)
+        setSelected(ids)
+        return
+      }
+      ids.add(note.id)
+    } else {
+      // Grabbing a selected note edits the whole selection; anything else selects just it.
+      ids = selected.has(note.id) ? selected : new Set([note.id])
+    }
+    setSelected(ids)
+
+    const start = new Map(notes.filter((n) => ids.has(n.id)).map((n) => [n.id, n.velocity]))
+    // With one note, clicking the slider jumps straight to that spot.
+    if (ids.size === 1) {
+      const rect = e.currentTarget.getBoundingClientRect()
+      const usable = rect.width - SLIDER_INSET * 2
+      const velocity = roundVelocity((e.clientX - rect.left - SLIDER_INSET) / usable)
+      start.set(note.id, velocity)
+      onChange(notes.map((n) => (n.id === note.id ? { ...n, velocity } : n)))
+    }
+    velocityDrag.current = { grabbedId: note.id, startX: e.clientX, startY: e.clientY, start }
+    setDraggingId(note.id)
+    gridRef.current!.setPointerCapture(e.pointerId)
+  }
+
+  function onVelocityMove(e: PointerEvent<HTMLDivElement>) {
+    const v = velocityDrag.current
+    if (!v) return
+    // Right or up raises velocity; left or down lowers it.
+    const delta = (e.clientX - v.startX - (e.clientY - v.startY)) / VELOCITY_DRAG_PX
+    onChange(
+      notes.map((n) => {
+        const from = v.start.get(n.id)
+        return from === undefined ? n : { ...n, velocity: roundVelocity(from + delta) }
+      }),
+    )
+  }
+
+  function endVelocityDrag() {
+    const v = velocityDrag.current
+    if (v) {
+      // Let you hear the new loudness of the note you grabbed.
+      const grabbed = notes.find((n) => n.id === v.grabbedId)
+      if (grabbed) onPreview(grabbed.pitch, grabbed.velocity)
+    }
+    velocityDrag.current = null
+    setDraggingId(null)
+    const box = marqueeRef.current
+    if (box) {
+      const inBox = notesInBox(box)
+      setSelected(box.additive ? new Set([...selected, ...inBox]) : inBox)
+      setBox(null)
+    }
+  }
+
+  // ---- Shared pointer handling ---------------------------------------------
+
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
+    if (mode === 'velocity') {
+      const box = marqueeRef.current
+      if (box) {
+        const { x, y } = gridPoint(e)
+        setBox({ ...box, x1: x, y1: y })
+      } else {
+        onVelocityMove(e)
+      }
+      return
+    }
     const d = drag.current
     if (!d) return
     const { step, pitch } = cellAt(e)
@@ -221,6 +377,7 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
 
   function endDrag() {
     drag.current = null
+    endVelocityDrag()
   }
 
   function remove(id: string) {
@@ -298,29 +455,63 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
           ))}
           <div className="pr-lines" />
 
-          {notes.map((note) => (
+          {notes.map((note) => {
+            const position = {
+              left: note.start * cellW,
+              top: (HIGHEST - note.pitch) * cellH,
+              width: note.duration * cellW,
+              height: cellH,
+            }
+            const velocityLabel = Math.round(note.velocity * 100)
+
+            if (mode === 'velocity') {
+              return (
+                <div
+                  key={note.id}
+                  className={`pr-note locked ${selected.has(note.id) ? 'selected' : ''}`}
+                  style={position}
+                  title={`${midiToName(note.pitch)} — velocity ${velocityLabel}`}
+                  onPointerDown={(e) => onVelocityPointerDown(e, note)}
+                >
+                  <div className="pr-velocity" style={{ insetInline: SLIDER_INSET }}>
+                    <div className="pr-velocity-fill" style={{ width: `${note.velocity * 100}%` }} />
+                  </div>
+                  {draggingId === note.id && <span className="pr-velocity-badge">{velocityLabel}</span>}
+                </div>
+              )
+            }
+
+            return (
+              <div
+                key={note.id}
+                className="pr-note"
+                // Fainter notes are quieter.
+                style={{ ...position, opacity: 0.45 + note.velocity * 0.55 }}
+                title={`${midiToName(note.pitch)} — double-click or right-click to delete`}
+                onPointerDown={(e) => onNotePointerDown(e, note)}
+                onDoubleClick={() => remove(note.id)}
+                onContextMenu={(e) => {
+                  e.preventDefault()
+                  remove(note.id)
+                }}
+              >
+                {/* Only label notes with room for the text. */}
+                {note.duration * cellW >= 28 && cellH >= 12 && <span>{midiToName(note.pitch)}</span>}
+              </div>
+            )
+          })}
+
+          {marquee && (
             <div
-              key={note.id}
-              className="pr-note"
+              className="pr-marquee"
               style={{
-                left: note.start * cellW,
-                top: (HIGHEST - note.pitch) * cellH,
-                width: note.duration * cellW,
-                height: cellH,
-                opacity: 0.45 + note.velocity * 0.55,
+                left: Math.min(marquee.x0, marquee.x1),
+                top: Math.min(marquee.y0, marquee.y1),
+                width: Math.abs(marquee.x1 - marquee.x0),
+                height: Math.abs(marquee.y1 - marquee.y0),
               }}
-              title={`${midiToName(note.pitch)} — double-click or right-click to delete`}
-              onPointerDown={(e) => onNotePointerDown(e, note)}
-              onDoubleClick={() => remove(note.id)}
-              onContextMenu={(e) => {
-                e.preventDefault()
-                remove(note.id)
-              }}
-            >
-              {/* Only label notes with room for the text. */}
-              {note.duration * cellW >= 28 && cellH >= 12 && <span>{midiToName(note.pitch)}</span>}
-            </div>
-          ))}
+            />
+          )}
 
           {playStep !== null && (
             <div className="pr-playhead" style={{ left: playStep * cellW, width: cellW }} />
@@ -333,4 +524,9 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview }
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n))
+}
+
+/** Keeps velocity between 0 and 1, in whole steps of 1/100. */
+function roundVelocity(v: number) {
+  return Math.round(clamp(v, 0, 1) * 100) / 100
 }

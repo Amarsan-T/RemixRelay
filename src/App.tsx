@@ -49,7 +49,6 @@ function App() {
         key={pattern.id}
         song={song}
         pattern={pattern}
-        onChangeSong={(change) => updateSong(song.id, change)}
         onChangePattern={(change: (p: Pattern) => Pattern) =>
           updateSong(song.id, (s) => ({
             ...s,
