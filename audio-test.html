@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RemixRelay · Audio Test</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">REMIXRELAY / AUDIO LAB</p>
+        <h1>Listen to the engine.</h1>
+        <p>Four synthesized tracks. One synchronized 16-step loop.</p>
+      </header>
+
+      <section aria-label="Playback controls" class="panel">
+        <div class="transport">
+          <button id="play" class="primary" type="button">Play</button>
+          <button id="stop" type="button">Stop</button>
+          <button id="reset" type="button">Reset engine</button>
+          <span id="status" role="status" aria-live="polite">Stopped</span>
+        </div>
+        <div class="settings">
+          <label>Tempo <input id="bpm" type="number" min="40" max="240" step="1" value="112" /> BPM</label>
+          <label class="check"><input id="loop" type="checkbox" checked /> Loop</label>
+          <label>Live preset
+            <select id="preset">
+              <option value="A">A · C minor groove</option>
+              <option value="B">B · F minor / G major</option>
+            </select>
+          </label>
+        </div>
+        <div id="steps" class="steps" aria-label="Sixteenth-note playhead"></div>
+        <p id="position" class="hint">Ready · 16 steps / 4 beats</p>
+        <p id="error" role="alert" hidden></p>
+      </section>
+
+      <section aria-label="Track mixer" class="panel">
+        <h2>Track mixer</h2>
+        <p class="hint">Mute the other tracks to hear an instrument on its own. Changes apply during playback.</p>
+        <div id="tracks"></div>
+      </section>
+
+      <details class="panel">
+        <summary>Pattern JSON · integration playground</summary>
+        <p class="hint">Edit note pitches, durations, or drum hits, then apply the snapshot while playing. Positions are 0–15; durations use sixteenth notes.</p>
+        <label for="pattern">MusicalPattern</label>
+        <textarea id="pattern" spellcheck="false" rows="18"></textarea>
+        <div class="transport">
+          <button id="apply" type="button">Apply JSON</button>
+          <button id="read" type="button">Read current pattern</button>
+        </div>
+      </details>
+
+      <footer>Press Play to enable browser audio. Stop rewinds to step 1. With Loop off, playback ends after one bar.<br />Reset engine disposes its audio resources and creates a fresh instance. <a href="/">Open main app</a></footer>
+    </main>
+    <script type="module" src="/src/audio/test-page.ts"></script>
+  </body>
+</html>
