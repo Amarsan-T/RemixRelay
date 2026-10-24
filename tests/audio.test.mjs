@@ -262,11 +262,23 @@ test('optional mixer fields validate without changing legacy pattern support', (
   assert.deepEqual(engine.getOutputLevels(), [0, 0])
 })
 
-test('the studio renders at the React entry without allocating browser audio', async () => {
+test('the app opens on the home screen listing projects, without allocating browser audio', async () => {
   const React = await import('react')
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { default: App } = await import('../src/App.tsx')
   const html = renderToStaticMarkup(React.createElement(App))
+  for (const text of ['REMIXRELAY', 'Your projects', 'New project', 'Trap Heat', 'Study Beats']) assert.ok(html.includes(text), `Missing ${text}`)
+  assert.ok(!html.includes('Channel Rack'), 'The studio opens only after picking a project')
+  assert.ok(!html.includes('AudioContext'))
+})
+
+test('the studio renders on its own without allocating browser audio', async () => {
+  const React = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { default: Studio } = await import('../fl_studio_web_daw.tsx')
+  const html = renderToStaticMarkup(React.createElement(Studio))
+  assert.ok(!html.includes('aria-label="Home"'), 'HOME only appears when there is a home to go to')
+  assert.ok(renderToStaticMarkup(React.createElement(Studio, { onHome: () => {}, projectName: 'My Song' })).includes('My Song'))
   for (const text of ['REMIXRELAY', 'Channel Rack', 'Trap Heat', 'Kick 808', 'Retro Lead']) assert.ok(html.includes(text))
   for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Kick 808 step 1']) {
     assert.ok(html.includes(`aria-label="${name}"`), `Missing studio control ${name}`)

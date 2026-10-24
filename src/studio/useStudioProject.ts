@@ -4,8 +4,8 @@ import { createStudioProject } from './data'
 import type { StudioProject } from './types'
 
 /** All sequencer, note, channel, and mixer edits live in this one project state. */
-export function useStudioProject() {
-  const [project, setProject] = useState(createStudioProject)
+export function useStudioProject(initial?: StudioProject) {
+  const [project, setProject] = useState(() => initial ?? createStudioProject())
   const setField = useCallback(<K extends keyof StudioProject>(field: K, action: SetStateAction<StudioProject[K]>) => {
     setProject((previous) => {
       const value = typeof action === 'function'
