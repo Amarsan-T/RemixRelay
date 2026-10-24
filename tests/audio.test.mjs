@@ -153,7 +153,7 @@ test('subscriptions, repeated stop, and terminal disposal work before audio init
 })
 
 const { createStudioProject, PRESETS } = await import('../src/studio/data.ts')
-const { toAudioPattern, toAudioSong } = await import('../src/studio/patternAdapter.ts')
+const { toAudioPattern, toAudioSong, patternStepAt } = await import('../src/studio/patternAdapter.ts')
 
 test('every studio preset maps all channels into valid engine data', () => {
   for (const preset of Object.values(PRESETS)) {
@@ -350,4 +350,37 @@ test('a channel instrument preset reaches the engine and unknown presets are rej
   assert.equal(lead(project).sound, 'warm-pad')
   const bad = { ...pattern, tracks: pattern.tracks.map((t) => t.id === 'synth_lead' ? { ...t, sound: 'kazoo' } : t) }
   assert.throws(() => validatePattern(bad), /unknown sound preset kazoo/)
+})
+
+test('patterns can be any number of steps long', () => {
+  const project = createStudioProject()
+  project.patternSteps = { 1: 24 }
+  project.stepData[1].kick[20] = 1
+  const odd = toAudioPattern(project, 1)
+  validatePattern(odd)
+  assert.equal(odd.steps, 24, 'A 24-step pattern loops after 24 steps')
+  assert.ok(odd.tracks.find((t) => t.id === 'kick').pattern.kick.some((hit) => hit.step === 20))
+  project.patternSteps = { 1: 32 }
+  const twoBars = toAudioPattern(project, 1)
+  assert.equal(twoBars.bars, 2)
+  assert.equal('steps' in twoBars, false, 'Whole-bar lengths use bars')
+  assert.throws(() => validatePattern({ ...odd, steps: 0 }), /steps must be an integer/)
+})
+
+test('long patterns span several playlist bars and stop at the end of the song', () => {
+  const project = createStudioProject()
+  project.patternSteps = { 2: 32 }
+  project.stepData[2].kick = new Array(32).fill(0)
+  project.stepData[2].kick[0] = 1
+  project.stepData[2].kick[24] = 1
+  project.song = { bars: 8, trackCount: 1, clips: [
+    { id: 'a', patternId: '2', track: 0, startBar: 0 },
+    { id: 'b', patternId: '2', track: 0, startBar: 7 }, // second half hangs off the end
+  ] }
+  const song = toAudioSong(project)
+  validatePattern(song)
+  assert.deepEqual(song.tracks.find((t) => t.id === 'kick').pattern.kick.map((h) => h.step), [0, 24, 112])
+  assert.equal(patternStepAt(project, 2, 20), 20)
+  assert.equal(patternStepAt(project, 2, 40), null, 'Bars 3-7 have no clip of pattern 2')
+  assert.equal(patternStepAt(project, 2, 115), 3)
 })

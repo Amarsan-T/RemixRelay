@@ -74,4 +74,6 @@ export interface StudioProject {
   pianoNotes: PianoNotes
   mixerTracks: MixerTrack[]
   song: StudioSong
+  /** Length of each pattern in steps (16 = one bar). Patterns not listed are 16. */
+  patternSteps?: Record<number, number>
 }

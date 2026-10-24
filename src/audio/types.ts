@@ -84,6 +84,11 @@ export interface MusicalPattern {
    * bars × 16 − 1, which lets the playlist play a whole song arrangement.
    */
   bars?: number
+  /**
+   * Exact length in steps, 1 through 1024, for patterns that aren't whole bars
+   * (e.g. 24 steps). Takes priority over `bars` when set.
+   */
+  steps?: number
   tracks: Track[]
   /** Optional master bus. Defaults to unity gain, centered pan, no effects. */
   master?: MixSettings
@@ -105,3 +110,8 @@ export interface PlaybackState {
 }
 
 export type PlaybackListener = (state: PlaybackState) => void
+
+/** How many steps a pattern plays before looping: `steps`, else 16 per bar. */
+export function totalSteps(pattern: Pick<MusicalPattern, 'bars' | 'steps'>): number {
+  return pattern.steps ?? STEP_COUNT * (pattern.bars ?? 1)
+}

@@ -68,7 +68,8 @@ export function validatePattern(value: unknown): asserts value is MusicalPattern
   requireValue(inRange(value.bpm, MIN_BPM, MAX_BPM), `bpm must be between ${MIN_BPM} and ${MAX_BPM}`)
   requireValue(typeof value.loop === 'boolean', 'loop must be a boolean')
   requireValue(value.bars === undefined || (Number.isInteger(value.bars) && inRange(value.bars, 1, MAX_BARS)), `bars must be an integer from 1 to ${MAX_BARS}`)
-  const totalSteps = STEP_COUNT * ((value.bars as number | undefined) ?? 1)
+  requireValue(value.steps === undefined || (Number.isInteger(value.steps) && inRange(value.steps, 1, MAX_BARS * STEP_COUNT)), `steps must be an integer from 1 to ${MAX_BARS * STEP_COUNT}`)
+  const totalSteps = (value.steps as number | undefined) ?? STEP_COUNT * ((value.bars as number | undefined) ?? 1)
   if (value.master !== undefined) {
     requireValue(isRecord(value.master), 'master must be an object')
     validateMix(value.master, true)

@@ -66,7 +66,8 @@ export function Playlist({
       id: newId(),
       patternId: pattern.id,
       track,
-      startBar: clamp(bar, 0, Math.max(0, song.bars - pattern.bars)),
+      // Clips start on whole bars, even when the pattern is a bar and a half long.
+      startBar: clamp(bar, 0, Math.max(0, Math.floor(song.bars - pattern.bars))),
     }
     onChange((s) => ({ ...s, clips: [...s.clips, clip] }))
     // Keep holding to slide the new clip into place.
@@ -88,7 +89,7 @@ export function Playlist({
     const d = drag.current
     if (!d) return
     const { bar, track } = cellAt(e)
-    const startBar = clamp(d.origin.startBar + bar - d.grabBar, 0, Math.max(0, song.bars - lengthOf(d.origin)))
+    const startBar = clamp(d.origin.startBar + bar - d.grabBar, 0, Math.max(0, Math.floor(song.bars - lengthOf(d.origin))))
     const newTrack = clamp(d.origin.track + track - d.grabTrack, 0, song.trackCount - 1)
     const current = song.clips.find((c) => c.id === d.id)
     if (current && current.startBar === startBar && current.track === newTrack) return

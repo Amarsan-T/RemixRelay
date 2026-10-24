@@ -3,9 +3,10 @@ import type { Dispatch, SetStateAction } from 'react'
 import { Music, Plus } from 'lucide-react'
 import { PianoRoll, type PianoRollMode } from '../components/PianoRoll'
 import { midiToName, nameToMidi, type Note } from '../music/types'
-import { STEP_COUNT } from '../audio/types'
 import { SOUND_PRESETS } from '../audio/soundPresets'
-import { defaultHit } from './patternAdapter'
+import { preloadPiano } from '../audio/sounds'
+import { defaultHit, patternLength } from './patternAdapter'
+import { PatternLengthControl } from './PatternLengthControl'
 import type { PianoNotes, StepData, StudioChannel, StudioProject } from './types'
 
 type Props = {
@@ -17,8 +18,9 @@ type Props = {
   setPianoNotes: Dispatch<SetStateAction<PianoNotes>>
   setStepData: Dispatch<SetStateAction<StepData>>
   preview: (channelId: string, pitch?: string) => void
-  /** Step within the bar the playhead is on, or null when this pattern isn't playing. */
+  /** Step within the pattern the playhead is on, or null when this pattern isn't playing. */
   playStep: number | null
+  setPatternSteps: Dispatch<SetStateAction<Record<number, number> | undefined>>
 }
 
 /** The default synth every channel starts with, listed first in the instrument picker. */
@@ -34,6 +36,7 @@ const NEW_CHANNEL_INSERT = 6
  */
 export function StudioPianoRoll({
   project, activePattern, selectedChannelId, onSelectChannel, setChannels, setPianoNotes, setStepData, preview, playStep,
+  setPatternSteps,
 }: Props) {
   const [mode, setMode] = useState<PianoRollMode>('notes')
   // Drums play from the channel rack, so only melodic channels get a piano roll.
@@ -50,7 +53,8 @@ export function StudioPianoRoll({
   }, [channel, preview])
 
   if (!channel) return null
-  const notes = editorNotes(project, activePattern, channel)
+  const length = patternLength(project, activePattern)
+  const notes = editorNotes(project, activePattern, channel, length)
 
   function save(next: Note[]) {
     setPianoNotes((prev) => ({
@@ -63,7 +67,7 @@ export function StudioPianoRoll({
       },
     }))
     // Keep the channel rack's lit steps in sync with where notes start.
-    const gates = new Array<number>(STEP_COUNT).fill(0)
+    const gates = new Array<number>(length).fill(0)
     for (const n of next) gates[n.start] = 1
     setStepData((prev) => ({ ...prev, [activePattern]: { ...prev[activePattern], [channel.id]: gates } }))
   }
@@ -108,13 +112,22 @@ export function StudioPianoRoll({
             ))}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => save([])}
-          className="px-2 py-1 text-[11px] bg-zinc-800 hover:bg-red-900/50 text-zinc-300 hover:text-red-300 rounded border border-zinc-700"
-        >
-          Clear Notes
-        </button>
+        <div className="flex items-center gap-3">
+          <PatternLengthControl
+            project={project}
+            pattern={activePattern}
+            setPatternSteps={setPatternSteps}
+            setStepData={setStepData}
+            setPianoNotes={setPianoNotes}
+          />
+          <button
+            type="button"
+            onClick={() => save([])}
+            className="px-2 py-1 text-[11px] bg-zinc-800 hover:bg-red-900/50 text-zinc-300 hover:text-red-300 rounded border border-zinc-700"
+          >
+            Clear Notes
+          </button>
+        </div>
       </div>
 
       {/* Which channel you're editing */}
@@ -159,6 +172,7 @@ export function StudioPianoRoll({
                 aria-checked={selected}
                 title={sound.description}
                 onClick={() => chooseSound(sound.id)}
+                onPointerEnter={sound.id === 'grand-piano' ? preloadPiano : undefined}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition border ${
                   selected ? 'border-orange-400 bg-zinc-800 text-zinc-100' : 'border-zinc-700/70 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
                 }`}
@@ -179,7 +193,9 @@ export function StudioPianoRoll({
 
       <PianoRoll
         notes={notes}
-        steps={STEP_COUNT}
+        // Remount when the length changes so the grid re-fits the width.
+        key={length}
+        steps={length}
         onChange={save}
         playStep={playStep}
         color={channel.color}
@@ -191,7 +207,7 @@ export function StudioPianoRoll({
 }
 
 /** The notes the piano roll shows: authored notes plus default hits from lit steps. */
-function editorNotes(project: StudioProject, pattern: number, channel: StudioChannel): Note[] {
+function editorNotes(project: StudioProject, pattern: number, channel: StudioChannel, length: number): Note[] {
   const authored = project.pianoNotes[pattern]?.[channel.id] ?? []
   const gates = project.stepData[pattern]?.[channel.id] ?? []
   const used = new Set<string>()
@@ -212,7 +228,7 @@ function editorNotes(project: StudioProject, pattern: number, channel: StudioCha
     })
   }
   const hit = defaultHit(channel)
-  for (let step = 0; step < STEP_COUNT; step++) {
+  for (let step = 0; step < length; step++) {
     if (gates[step] !== 1 || authored.some((n) => n.step === step)) continue
     notes.push({
       id: uniqueId(`g-${step}-${hit.pitch}`),

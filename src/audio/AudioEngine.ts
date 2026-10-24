@@ -3,7 +3,7 @@ import { createTrackInstrument } from './instruments'
 import type { TrackInstrument } from './instruments'
 import { createDemoPattern, validatePattern } from './patterns'
 import { createMixBus } from './mixer'
-import { DRUM_VOICES, STEP_COUNT } from './types'
+import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
 /** Framework-independent sequencer. Construction does not create an AudioContext. */
@@ -53,7 +53,9 @@ export class AudioEngine {
     this.assertUsable()
     if (!this.context) {
       // A private context keeps the existing app's Tone synths/transport intact.
-      this.context = new Tone.Context({ latencyHint: 'interactive', lookAhead: 0.05 })
+      // Notes are scheduled 100 ms ahead (Tone's default), so a brief page hiccup
+      // can't make them late. 50 ms was too tight for the studio UI.
+      this.context = new Tone.Context({ latencyHint: 'interactive', lookAhead: 0.1 })
       this.meter = new Tone.Meter({ context: this.context, channelCount: 2, normalRange: true, smoothing: 0.7 }).connect(this.context.destination)
       this.limiter = new Tone.Limiter({ context: this.context, threshold: -1 }).connect(this.meter)
       // The final gate follows every effect, so Stop also silences feedback tails.
@@ -96,7 +98,8 @@ export class AudioEngine {
     const latest = this.pattern.tracks.find((track) => track.id === id)
     if (!latest || latest.type !== preview.type) return
     this.syncInstruments()
-    const time = this.context.now() + 0.005
+    // Previews skip the scheduling look-ahead (context.now() includes it) so clicks sound instantly.
+    const time = this.context.immediate() + 0.005
     this.master.gain.setValueAtTime(0.8, time)
     this.instruments.get(id)?.playStep({ ...preview, muted: latest.muted }, 0, time, 60 / this.pattern.bpm / 4)
   }
@@ -145,7 +148,7 @@ export class AudioEngine {
     this.assertUsable()
     validatePattern(pattern)
     // The loop length is fixed when playback starts, so a new length needs a restart.
-    const lengthChanged = (pattern.bars ?? 1) !== (this.pattern.bars ?? 1)
+    const lengthChanged = totalSteps(pattern) !== totalSteps(this.pattern)
     this.pattern = structuredClone(pattern)
     if (lengthChanged && (this.status === 'playing' || this.status === 'starting')) {
       this.stop()
@@ -218,14 +221,15 @@ export class AudioEngine {
       this.syncInstruments()
       transport.timeSignature = 4
       transport.bpm.value = this.pattern.bpm
-      // A song plays several bars; a single pattern is one.
-      const bars = this.pattern.bars ?? 1
-      const totalSteps = STEP_COUNT * bars
-      transport.setLoopPoints(0, `${bars}m`)
+      // Loop on the exact length: a song's bars, or a pattern of any number of steps.
+      // "0:0:N" is Tone's notation for N sixteenth notes.
+      const loopSteps = totalSteps(this.pattern)
+      const loopEnd = `0:0:${loopSteps}`
+      transport.setLoopPoints(0, loopEnd)
       transport.loop = this.pattern.loop
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
-        const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % totalSteps
+        const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % loopSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
         const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
           track.pattern.closedHat.some((hit) => hit.step === step && hit.velocity !== 0))
@@ -240,7 +244,7 @@ export class AudioEngine {
           this.step = step
           this.emit()
         }, time)
-      }, '16n', 0, `${bars}m`))
+      }, '16n', 0, loopEnd))
       // A looping Transport wraps before this event. With looping off it stops at bar end.
       this.events.push(transport.schedule((time) => {
         if (this.generation !== generation) return
@@ -250,7 +254,7 @@ export class AudioEngine {
         this.finishTimer = setTimeout(() => {
           if (this.generation === generation) this.stop()
         }, Math.max(0, (time - context.immediate()) * 1000) + 10)
-      }, `${bars}m`))
+      }, loopEnd))
       const startTime = context.now() + 0.01
       this.master.gain.setValueAtTime(0.8, startTime)
       this.status = 'playing'
