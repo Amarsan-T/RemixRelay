@@ -279,8 +279,9 @@ test('the studio renders on its own without allocating browser audio', async () 
   const html = renderToStaticMarkup(React.createElement(Studio))
   assert.ok(!html.includes('aria-label="Home"'), 'HOME only appears when there is a home to go to')
   assert.ok(renderToStaticMarkup(React.createElement(Studio, { onHome: () => {}, projectName: 'My Song' })).includes('My Song'))
-  for (const text of ['REMIXRELAY', 'Channel Rack', 'Trap Heat', 'Kick 808', 'Retro Lead']) assert.ok(html.includes(text))
-  for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Kick 808 step 1']) {
+  // The studio opens on the playlist; the channel rack is one tab away.
+  for (const text of ['REMIXRELAY', 'Playlist • Song', 'Pattern 1', 'Track 1', 'Channel Rack', 'Trap Heat']) assert.ok(html.includes(text), `Missing ${text}`)
+  for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Pattern playback mode', 'Song playback mode']) {
     assert.ok(html.includes(`aria-label="${name}"`), `Missing studio control ${name}`)
   }
   assert.ok(!html.includes('Get started'))

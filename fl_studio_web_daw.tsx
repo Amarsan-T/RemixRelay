@@ -39,7 +39,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
   const { bpm, loop, metronome, channels, stepData, pianoNotes, mixerTracks } = project;
-  const [activeTab, setActiveTab] = useState('channelRack');
+  // Projects open on the song arrangement.
+  const [activeTab, setActiveTab] = useState('playlist');
   const [selectedChannelId, setSelectedChannelId] = useState('synth_lead');
   const [activePattern, setActivePattern] = useState(1);
   // PAT loops the selected pattern; SONG plays the playlist.
@@ -268,8 +269,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             <button
               aria-label="Song playback mode"
               aria-pressed={playMode === 'song'}
-              title="Play the playlist, and open it"
-              onClick={() => { setPlayMode('song'); setActiveTab('playlist'); }}
+              title="Play the whole playlist"
+              onClick={() => setPlayMode('song')}
               className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'song' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
             >
               SONG
