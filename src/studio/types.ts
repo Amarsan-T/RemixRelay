@@ -9,6 +9,8 @@ export interface StudioChannel {
   solo: boolean
   type: 'drum' | 'pitched' | 'synth'
   defaultNote?: string
+  /** Instrument preset (SOUND_PRESETS id). Unset plays the default studio synth. */
+  sound?: string
 }
 
 export interface PianoNote {

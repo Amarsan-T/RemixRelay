@@ -719,6 +719,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             activePattern={activePattern}
             selectedChannelId={selectedChannelId}
             onSelectChannel={setSelectedChannelId}
+            setChannels={setChannels}
             setPianoNotes={setPianoNotes}
             setStepData={setStepData}
             preview={preview}

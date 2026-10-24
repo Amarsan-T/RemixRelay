@@ -1,3 +1,4 @@
+import { SOUND_IDS } from './soundPresets'
 import { DRUM_VOICES, MAX_BARS, MAX_BPM, MIN_BPM, STEP_COUNT } from './types'
 import type { DrumStep, MusicalPattern, NoteStep } from './types'
 
@@ -91,6 +92,7 @@ export function validatePattern(value: unknown): asserts value is MusicalPattern
       }
     } else {
       requireValue(track.type === 'bass' || track.type === 'melody' || track.type === 'chords', 'unknown track type')
+      requireValue(track.sound === undefined || (typeof track.sound === 'string' && SOUND_IDS.includes(track.sound)), `unknown sound preset ${String(track.sound)}`)
       validateSteps(track.steps, track.id, true, totalSteps)
     }
   }

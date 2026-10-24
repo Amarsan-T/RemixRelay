@@ -275,7 +275,9 @@ export class AudioEngine {
     if (!destination) return
     const tracks = new Map(this.pattern.tracks.map((track) => [track.id, track]))
     for (const [id, instrument] of this.instruments) {
-      if (tracks.get(id)?.type !== instrument.type) {
+      const next = tracks.get(id)
+      const sound = next && next.type !== 'drums' ? next.sound : undefined
+      if (next?.type !== instrument.type || sound !== instrument.sound) {
         instrument.dispose()
         this.instruments.delete(id)
       }

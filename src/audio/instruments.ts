@@ -1,10 +1,13 @@
 import * as Tone from 'tone'
 import { createMixBus } from './mixer'
+import { createSound, type SoundVoice } from './sounds'
 import type { Track } from './types'
 
 /** One independently mixed instrument rack per track. */
 export interface TrackInstrument {
   readonly type: Track['type']
+  /** Sound preset this rack was built with; the engine rebuilds the rack when it changes. */
+  readonly sound?: string
   setMix(track: Track): void
   playStep(track: Track, step: number, time: number, stepSeconds: number): void
   chokeOpenHat?(time: number): void
@@ -86,10 +89,14 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
       envelope: { attack: 0.04, decay: 0.2, sustain: 0.55, release: 0.2 },
     },
   }
+  // A chosen preset (piano, pad...) replaces the default synth for this track.
+  const preset = track.sound ? createSound(track.sound, context, output) : null
   // Polyphony lets long notes overlap without an old note-off cutting a new one.
-  const synth = new Tone.PolySynth({ context, voice: Tone.Synth, maxPolyphony: 32, options: options[track.type] }).connect(output)
+  const fallback = preset ? null : new Tone.PolySynth({ context, voice: Tone.Synth, maxPolyphony: 32, options: options[track.type] }).connect(output)
+  const synth: SoundVoice = preset?.voice ?? fallback!
   return {
     type: track.type,
+    sound: track.sound,
     setMix,
     playStep(next, step, time, stepSeconds) {
       if (next.type === 'drums' || next.muted) return
@@ -101,7 +108,8 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
     },
     dispose() {
       // Disposing prevents delayed PolySynth note-offs from affecting a later run.
-      synth.dispose()
+      preset?.dispose()
+      fallback?.dispose()
       bus.dispose()
     },
   }

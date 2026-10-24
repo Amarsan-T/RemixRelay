@@ -69,6 +69,8 @@ export interface DrumTrack extends TrackSettings {
 export interface InstrumentTrack extends TrackSettings {
   type: InstrumentType
   steps: NoteStep[]
+  /** Instrument preset id from SOUND_PRESETS, e.g. 'grand-piano'. Omit for the default synth. */
+  sound?: string
 }
 
 export type Track = DrumTrack | InstrumentTrack

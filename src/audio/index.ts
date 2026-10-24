@@ -1,6 +1,8 @@
 export { AudioEngine } from './AudioEngine'
 export { createDemoPattern, validatePattern } from './patterns'
 export { DRUM_VOICES, MAX_BARS, MAX_BPM, MIN_BPM, STEP_COUNT } from './types'
+export { SOUND_IDS, SOUND_PRESETS } from './soundPresets'
+export type { SoundPreset } from './soundPresets'
 export type {
   DrumPattern, DrumStep, DrumTrack, DrumVoice, InstrumentTrack, InstrumentType,
   EffectsSettings, MixSettings, MusicalNote, MusicalPattern, NoteStep, PlaybackListener, PlaybackState, PreviewOptions, Track, TrackSettings,

@@ -98,7 +98,10 @@ function toMusicalPattern(project: StudioProject, patternsPerBar: number[][]): M
       return { ...mix, type: 'drums', pattern }
     }
     const steps = mergeNotes(everyBar((p, offset) => noteSteps(project, p, channel, offset)))
-    return { ...mix, type: channel.type === 'pitched' ? 'bass' : 'melody', steps }
+    return {
+      ...mix, type: channel.type === 'pitched' ? 'bass' : 'melody', steps,
+      ...(channel.sound ? { sound: channel.sound } : {}),
+    }
   })
   if (project.metronome) {
     tracks.push({

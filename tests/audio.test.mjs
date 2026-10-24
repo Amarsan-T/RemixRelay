@@ -336,3 +336,17 @@ test('notes edited in the piano roll keep their velocity in playback', () => {
   const lead = toAudioPattern(project, 1).tracks.find((track) => track.id === 'synth_lead')
   assert.equal(lead.steps[0].notes[0].velocity, 0.3)
 })
+
+test('a channel instrument preset reaches the engine and unknown presets are rejected', async () => {
+  const { SOUND_PRESETS } = await import('../src/audio/index.ts')
+  assert.deepEqual(SOUND_PRESETS.map((s) => s.name), ['Grand Piano', 'Synth Lead', 'Deep Bass', 'Warm Pad', 'Pluck', 'Chiptune'])
+  const project = createStudioProject()
+  const lead = (p) => toAudioPattern(p, 1).tracks.find((track) => track.id === 'synth_lead')
+  assert.equal('sound' in lead(project), false, 'Channels without a preset keep the default synth')
+  project.channels = project.channels.map((c) => c.id === 'synth_lead' ? { ...c, sound: 'warm-pad' } : c)
+  const pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  assert.equal(lead(project).sound, 'warm-pad')
+  const bad = { ...pattern, tracks: pattern.tracks.map((t) => t.id === 'synth_lead' ? { ...t, sound: 'kazoo' } : t) }
+  assert.throws(() => validatePattern(bad), /unknown sound preset kazoo/)
+})
