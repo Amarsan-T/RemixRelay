@@ -124,22 +124,26 @@ export const PRESETS: Record<string, StudioPreset> = {
 };
 
 
-export function createStudioProject(): StudioProject {
+/** A new project. Pass a preset name to start from it, or null for a blank project. */
+export function createStudioProject(preset: string | null = 'Trap Heat'): StudioProject {
+  const start = preset ? PRESETS[preset] : undefined
   const stepData: StudioProject['stepData'] = {}
   const pianoNotes: StudioProject['pianoNotes'] = {}
   for (let p = 1; p <= 4; p++) {
     stepData[p] = Object.fromEntries(INITIAL_CHANNELS.map((ch) => [ch.id, new Array<number>(16).fill(0)]))
     pianoNotes[p] = {}
   }
-  stepData[1] = structuredClone(PRESETS['Trap Heat'].steps)
-  pianoNotes[1] = structuredClone(PRESETS['Trap Heat'].notes)
+  if (start) {
+    stepData[1] = structuredClone(start.steps)
+    pianoNotes[1] = structuredClone(start.notes)
+  }
   return {
-    bpm: PRESETS['Trap Heat'].bpm, loop: true, metronome: false,
+    bpm: start?.bpm ?? 120, loop: true, metronome: false,
     channels: structuredClone(INITIAL_CHANNELS), stepData, pianoNotes,
     // Pattern 1 for the first 4 bars, so SONG mode plays something right away.
     song: {
       bars: 8, trackCount: 4,
-      clips: [0, 1, 2, 3].map((bar) => ({ id: `clip-${bar}`, patternId: '1', track: 0, startBar: bar })),
+      clips: start ? [0, 1, 2, 3].map((bar) => ({ id: `clip-${bar}`, patternId: '1', track: 0, startBar: bar })) : [],
     },
     mixerTracks: [
       { id: 0, name: 'Master', vol: 0.85, pan: 0, filter: 20000, delay: 0, dist: 0, mute: false, solo: false },

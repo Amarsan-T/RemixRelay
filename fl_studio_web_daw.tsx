@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Play, Square, Volume2, RotateCcw, Sliders, Music, Grid, Sparkles,
-  Trash2, Zap, Radio, Layers, ListMusic,
+  Trash2, Zap, Radio, Layers, ListMusic, Home,
 } from 'lucide-react';
 import { MAX_BPM, MIN_BPM } from './src/audio';
 import { PRESETS } from './src/studio/data';
@@ -10,13 +10,34 @@ import { useStudioAudio, type PlayMode } from './src/studio/useStudioAudio';
 import { patternsPerBar } from './src/studio/patternAdapter';
 import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
 import { StudioPlaylist } from './src/studio/StudioPlaylist';
-import type { MixerParam, StepData, StudioChannel } from './src/studio/types';
+import type { MixerParam, StepData, StudioChannel, StudioProject } from './src/studio/types';
 
-export default function App() {
+type StudioProps = {
+  /** Project to open. Without one, the studio starts with the Trap Heat demo. */
+  initialProject?: StudioProject;
+  /** Shown under the logo. */
+  projectName?: string;
+  /** Called with the project after every edit, so going home keeps your work. */
+  onProjectChange?: (project: StudioProject) => void;
+  /** Shows a HOME button that calls this. */
+  onHome?: () => void;
+};
+
+export default function App({ initialProject, projectName, onProjectChange, onHome }: StudioProps) {
   const {
     project, setBpm, setLoop, setMetronome, setChannels,
     setStepData, setPianoNotes, setMixerTracks, setSong,
-  } = useStudioProject();
+  } = useStudioProject(initialProject);
+
+  // Report edits upward. The callback sits in a ref so a new function from the
+  // parent on each render doesn't re-run this; opening a project isn't an edit.
+  const onProjectChangeRef = useRef(onProjectChange);
+  useEffect(() => { onProjectChangeRef.current = onProjectChange; });
+  useEffect(() => {
+    if (project !== initialProject) onProjectChangeRef.current?.(project);
+    // initialProject only matters for the first comparison.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project]);
   const { bpm, loop, metronome, channels, stepData, pianoNotes, mixerTracks } = project;
   const [activeTab, setActiveTab] = useState('channelRack');
   const [selectedChannelId, setSelectedChannelId] = useState('synth_lead');
@@ -218,9 +239,21 @@ export default function App() {
             </div>
             <div className="leading-tight">
               <span className="text-sm font-black tracking-wider text-orange-400 block font-mono">REMIXRELAY</span>
-              <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-semibold">Music Studio</span>
+              <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-semibold block max-w-40 truncate">{projectName ?? 'Music Studio'}</span>
             </div>
           </div>
+
+          {onHome && (
+            <button
+              type="button"
+              aria-label="Home"
+              title="Back to your projects"
+              onClick={() => { handleStop(); onHome(); }}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-bold rounded border border-zinc-700/80 bg-zinc-900/90 text-zinc-300 hover:text-orange-400"
+            >
+              <Home className="w-3.5 h-3.5" /> HOME
+            </button>
+          )}
 
           {/* Mode Switcher: PAT vs SONG */}
           <div className="flex items-center bg-zinc-900/90 p-0.5 rounded border border-zinc-700/80">
