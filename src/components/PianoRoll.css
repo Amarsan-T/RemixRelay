@@ -11,7 +11,7 @@
   max-height: 520px;
   overflow: auto;
   border: 1px solid #2e303a;
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--roll-bg);
   user-select: none;
   touch-action: none;
@@ -82,7 +82,7 @@
   border-bottom-color: #111;
   /* Shorter, like a real keyboard. */
   margin-right: 22px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 0 0 0;
 }
 
 .pr-key:active {
