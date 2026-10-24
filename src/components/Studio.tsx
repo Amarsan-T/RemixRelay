@@ -153,7 +153,8 @@ export function Studio() {
       <p className="studio-hint">
         <span className="studio-swatch" style={{ background: instrument.color }} />
         {instrument.name} — {instrument.description}. Click to draw, drag to move or stretch,
-        double-click or right-click to delete.
+        double-click or right-click to delete. Ctrl + wheel zooms time, Ctrl + middle-drag zooms
+        pitch.
       </p>
 
       <PianoRoll
