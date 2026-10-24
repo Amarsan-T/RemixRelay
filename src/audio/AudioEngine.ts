@@ -144,7 +144,14 @@ export class AudioEngine {
   setPattern(pattern: MusicalPattern): void {
     this.assertUsable()
     validatePattern(pattern)
+    // The loop length is fixed when playback starts, so a new length needs a restart.
+    const lengthChanged = (pattern.bars ?? 1) !== (this.pattern.bars ?? 1)
     this.pattern = structuredClone(pattern)
+    if (lengthChanged && (this.status === 'playing' || this.status === 'starting')) {
+      this.stop()
+      void this.play().catch((error: unknown) => console.error('AudioEngine restart failed:', error))
+      return
+    }
     if (this.context) {
       this.context.transport.bpm.value = this.pattern.bpm
       this.context.transport.loop = this.pattern.loop
@@ -211,11 +218,14 @@ export class AudioEngine {
       this.syncInstruments()
       transport.timeSignature = 4
       transport.bpm.value = this.pattern.bpm
-      transport.setLoopPoints(0, '1m')
+      // A song plays several bars; a single pattern is one.
+      const bars = this.pattern.bars ?? 1
+      const totalSteps = STEP_COUNT * bars
+      transport.setLoopPoints(0, `${bars}m`)
       transport.loop = this.pattern.loop
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
-        const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % STEP_COUNT
+        const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % totalSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
         const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
           track.pattern.closedHat.some((hit) => hit.step === step && hit.velocity !== 0))
@@ -230,7 +240,7 @@ export class AudioEngine {
           this.step = step
           this.emit()
         }, time)
-      }, '16n', 0, '1m'))
+      }, '16n', 0, `${bars}m`))
       // A looping Transport wraps before this event. With looping off it stops at bar end.
       this.events.push(transport.schedule((time) => {
         if (this.generation !== generation) return
@@ -240,7 +250,7 @@ export class AudioEngine {
         this.finishTimer = setTimeout(() => {
           if (this.generation === generation) this.stop()
         }, Math.max(0, (time - context.immediate()) * 1000) + 10)
-      }, '1m'))
+      }, `${bars}m`))
       const startTime = context.now() + 0.01
       this.master.gain.setValueAtTime(0.8, startTime)
       this.status = 'playing'

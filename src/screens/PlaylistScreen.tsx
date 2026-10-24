@@ -2,12 +2,25 @@ import { useEffect, useRef, useState } from 'react'
 import { Pencil, Play, Plus, Square, Trash2 } from 'lucide-react'
 import { Breadcrumbs } from '../components/Breadcrumbs'
 import { ExportButton } from '../components/ExportButton'
-import { Playlist } from '../components/Playlist'
+import { Playlist, type ClipPreviewData } from '../components/Playlist'
 import * as engine from '../music/engine'
 import { getInstrumentPreset } from '../music/presets'
 import { renderTimeline } from '../music/render'
 import { createPattern } from '../music/songs'
 import { patternBars, type Song } from '../music/types'
+
+/** Preview of notes by pitch, highest at the top, like a tiny piano roll. */
+function notesPreview(notes: { pitch: number; start: number; duration: number }[], steps: number): ClipPreviewData {
+  if (notes.length === 0) return { width: steps, height: 1, blocks: [] }
+  const pitches = notes.map((n) => n.pitch)
+  const low = Math.min(...pitches)
+  const high = Math.max(...pitches)
+  return {
+    width: steps,
+    height: high - low + 1,
+    blocks: notes.map((n) => ({ x: n.start, y: high - n.pitch, w: n.duration })),
+  }
+}
 
 type Props = {
   song: Song
@@ -210,10 +223,17 @@ export function PlaylistScreen({ song, onChange, onHome, onOpenPattern }: Props)
             </div>
 
             <Playlist
-              song={song}
+              arrangement={song}
+              patterns={song.patterns.map((p) => ({
+                id: p.id,
+                name: p.name,
+                color: getInstrumentPreset(p.instrumentId).color,
+                bars: patternBars(p),
+                preview: notesPreview(p.notes, p.steps),
+              }))}
               selectedPatternId={selectedId}
               onSelectPattern={setSelectedId}
-              onChange={onChange}
+              onChange={(change) => onChange((s) => ({ ...s, ...change(s) }))}
               onOpenPattern={onOpenPattern}
               playStep={playStep}
             />

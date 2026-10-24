@@ -1,4 +1,5 @@
 .piano-roll {
+  --mono: ui-monospace, Consolas, monospace;
   --key-w: 64px;
   --ruler-h: 24px;
   --roll-bg: #1b1c24;

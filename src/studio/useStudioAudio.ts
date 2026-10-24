@@ -1,13 +1,19 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { AudioEngine, validatePattern } from '../audio'
 import type { PlaybackState } from '../audio'
-import { DRUM_CHANNELS, toAudioPattern } from './patternAdapter'
+import { DRUM_CHANNELS, toAudioPattern, toAudioSong } from './patternAdapter'
 import type { StudioProject } from './types'
 
+export type PlayMode = 'pattern' | 'song'
+
 /** One engine per mounted studio. React project state is the only edit source. */
-export function useStudioAudio(project: StudioProject, activePattern: number) {
+export function useStudioAudio(project: StudioProject, activePattern: number, mode: PlayMode = 'pattern') {
   const engineRef = useRef<AudioEngine | null>(null)
-  const pattern = useMemo(() => toAudioPattern(project, activePattern), [project, activePattern])
+  // PAT loops the selected pattern; SONG plays the whole playlist.
+  const pattern = useMemo(
+    () => mode === 'song' ? toAudioSong(project) : toAudioPattern(project, activePattern),
+    [project, activePattern, mode],
+  )
   const patternError = useMemo(() => {
     try { validatePattern(pattern); return null }
     catch (error) { return error instanceof Error ? error.message : String(error) }

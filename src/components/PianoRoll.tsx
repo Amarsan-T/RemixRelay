@@ -117,10 +117,17 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
     return () => window.removeEventListener('keydown', onKey)
   }, [mode, notes])
 
-  // Start scrolled to around middle C instead of the top of the range.
+  // Start scrolled to around middle C instead of the top of the range, and
+  // widen the steps so a short pattern fills the space instead of half of it.
   useEffect(() => {
     const el = scrollRef.current
-    if (el) el.scrollTop = (HIGHEST - 74) * DEFAULT_CELL_H
+    if (!el) return
+    el.scrollTop = (HIGHEST - 74) * DEFAULT_CELL_H
+    const keysWidth = el.querySelector('.pr-keys')?.clientWidth ?? 0
+    const fit = Math.floor((el.clientWidth - keysWidth) / steps)
+    if (fit > DEFAULT_CELL_W) setCellW(Math.min(fit, MAX_CELL_W))
+    // Only on first show; after that the width is yours to zoom.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // After a zoom changes the grid size, scroll so the spot you zoomed on stays

@@ -1,29 +1,42 @@
 import { useRef, type PointerEvent } from 'react'
-import { getInstrumentPreset } from '../music/presets'
-import { STEPS_PER_BAR, newId, patternBars, type Clip, type Pattern, type Song } from '../music/types'
+import { STEPS_PER_BAR, newId } from '../music/types'
 
 const BAR_W = 48 // pixels per bar
 const TRACK_H = 52 // pixels per track row
 const HEADER_W = 104 // track name column
 const RULER_H = 24
 
+/** One placement of a pattern on the playlist. */
+export type PlaylistClip = { id: string; patternId: string; track: number; startBar: number }
+
+/** Everything the playlist edits. */
+export type Arrangement = { bars: number; trackCount: number; clips: PlaylistClip[] }
+
+/** Mini drawing inside a clip: blocks on a grid `width` steps wide and `height` rows tall. */
+export type ClipPreviewData = { width: number; height: number; blocks: { x: number; y: number; w: number }[] }
+
+/** What the playlist needs to know about each pattern it can place. */
+export type PlaylistPattern = { id: string; name: string; color: string; bars: number; preview: ClipPreviewData }
+
 type Props = {
-  song: Song
+  arrangement: Arrangement
+  patterns: PlaylistPattern[]
   /** Pattern that clicking the grid places. */
   selectedPatternId: string | null
   onSelectPattern: (patternId: string) => void
-  onChange: (change: (song: Song) => Song) => void
+  onChange: (change: (arrangement: Arrangement) => Arrangement) => void
   onOpenPattern: (patternId: string) => void
   /** Step the playhead is on, or null when stopped. */
   playStep: number | null
 }
 
-type ClipDrag = { id: string; grabBar: number; grabTrack: number; origin: Clip }
+type ClipDrag = { id: string; grabBar: number; grabTrack: number; origin: PlaylistClip }
 
 // The arrangement grid: tracks are rows, bars are columns, and each clip is
 // one placement of a pattern. Works like FL Studio's playlist.
 export function Playlist({
-  song,
+  arrangement: song,
+  patterns: patternList,
   selectedPatternId,
   onSelectPattern,
   onChange,
@@ -32,12 +45,9 @@ export function Playlist({
 }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
   const drag = useRef<ClipDrag | null>(null)
-  const patterns = new Map(song.patterns.map((p) => [p.id, p]))
+  const patterns = new Map(patternList.map((p) => [p.id, p]))
 
-  const lengthOf = (clip: Clip) => {
-    const pattern = patterns.get(clip.patternId)
-    return pattern ? patternBars(pattern) : 1
-  }
+  const lengthOf = (clip: PlaylistClip) => patterns.get(clip.patternId)?.bars ?? 1
 
   function cellAt(e: PointerEvent): { bar: number; track: number } {
     const rect = gridRef.current!.getBoundingClientRect()
@@ -52,11 +62,11 @@ export function Playlist({
     const pattern = selectedPatternId ? patterns.get(selectedPatternId) : undefined
     if (!pattern) return
     const { bar, track } = cellAt(e)
-    const clip: Clip = {
+    const clip: PlaylistClip = {
       id: newId(),
       patternId: pattern.id,
       track,
-      startBar: clamp(bar, 0, Math.max(0, song.bars - patternBars(pattern))),
+      startBar: clamp(bar, 0, Math.max(0, song.bars - pattern.bars)),
     }
     onChange((s) => ({ ...s, clips: [...s.clips, clip] }))
     // Keep holding to slide the new clip into place.
@@ -64,7 +74,7 @@ export function Playlist({
     gridRef.current!.setPointerCapture(e.pointerId)
   }
 
-  function onClipPointerDown(e: PointerEvent<HTMLDivElement>, clip: Clip) {
+  function onClipPointerDown(e: PointerEvent<HTMLDivElement>, clip: PlaylistClip) {
     if (e.button !== 0) return
     e.stopPropagation()
     // Clicking a clip also picks its pattern for the next placement, like FL Studio.
@@ -160,9 +170,9 @@ export function Playlist({
                 style={{
                   left: clip.startBar * BAR_W + 1,
                   top: clip.track * TRACK_H + 2,
-                  width: patternBars(pattern) * BAR_W - 2,
+                  width: pattern.bars * BAR_W - 2,
                   height: TRACK_H - 4,
-                  background: getInstrumentPreset(pattern.instrumentId).color,
+                  background: pattern.color,
                 }}
                 title={`${pattern.name}: double-click to edit notes, right-click to remove`}
                 onPointerDown={(e) => onClipPointerDown(e, clip)}
@@ -175,7 +185,7 @@ export function Playlist({
                 <span className="pointer-events-none absolute top-0.5 left-1.5 truncate text-[11px] font-medium text-black/75">
                   {pattern.name}
                 </span>
-                <ClipPreview pattern={pattern} />
+                <ClipPreview preview={pattern.preview} />
               </div>
             )
           })}
@@ -192,28 +202,14 @@ export function Playlist({
   )
 }
 
-/** Tiny drawing of the pattern's notes inside its clip. */
-function ClipPreview({ pattern }: { pattern: Pattern }) {
-  if (pattern.notes.length === 0) return null
-  const pitches = pattern.notes.map((n) => n.pitch)
-  const low = Math.min(...pitches)
-  const high = Math.max(...pitches)
+/** Tiny drawing of the pattern inside its clip. */
+function ClipPreview({ preview }: { preview: ClipPreviewData }) {
+  if (preview.blocks.length === 0) return null
   return (
     <div className="pointer-events-none absolute inset-x-1 top-[18px] bottom-1">
-      <svg
-        className="size-full"
-        viewBox={`0 0 ${pattern.steps} ${high - low + 1}`}
-        preserveAspectRatio="none"
-      >
-        {pattern.notes.map((n) => (
-          <rect
-            key={n.id}
-            x={n.start}
-            y={high - n.pitch}
-            width={n.duration}
-            height={1}
-            fill="rgba(0,0,0,.45)"
-          />
+      <svg className="size-full" viewBox={`0 0 ${preview.width} ${preview.height}`} preserveAspectRatio="none">
+        {preview.blocks.map((b, i) => (
+          <rect key={i} x={b.x} y={b.y} width={b.w} height={1} fill="rgba(0,0,0,.45)" />
         ))}
       </svg>
     </div>

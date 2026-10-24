@@ -1,5 +1,7 @@
 /** One bar of 4/4, indexed from 0 through 15. All positions use sixteenth notes. */
 export const STEP_COUNT = 16
+/** Longest pattern a song can play, in bars. */
+export const MAX_BARS = 64
 export const MIN_BPM = 40
 export const MAX_BPM = 240
 
@@ -75,6 +77,11 @@ export type Track = DrumTrack | InstrumentTrack
 export interface MusicalPattern {
   bpm: number
   loop: boolean
+  /**
+   * Length in bars, 1 through 64. Defaults to 1. Steps then run from 0 through
+   * bars × 16 − 1, which lets the playlist play a whole song arrangement.
+   */
+  bars?: number
   tracks: Track[]
   /** Optional master bus. Defaults to unity gain, centered pan, no effects. */
   master?: MixSettings
@@ -88,7 +95,7 @@ export interface PreviewOptions {
 
 export interface PlaybackState {
   status: 'stopped' | 'starting' | 'playing' | 'disposed'
-  /** Audible playhead position, or null when stopped. */
+  /** Audible playhead position (counting across all bars), or null when stopped. */
   step: number | null
   bpm: number
   loop: boolean

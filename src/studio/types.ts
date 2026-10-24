@@ -15,6 +15,10 @@ export interface PianoNote {
   step: number
   note: string
   length: number
+  /** Set once the note is edited in the piano roll, so it can be dragged. */
+  id?: string
+  /** 0 through 1. Defaults to 0.8. */
+  velocity?: number
 }
 
 export type StepData = Record<number, Record<string, number[]>>
@@ -34,6 +38,24 @@ export interface MixerTrack {
 
 export type MixerParam = Exclude<keyof MixerTrack, 'id' | 'name'>
 
+/** One pattern placed on the song playlist. Every pattern is one bar long. */
+export interface SongClip {
+  id: string
+  /** '1' through '4', matching the PAT buttons. */
+  patternId: string
+  /** Playlist row, 0-based. */
+  track: number
+  /** Bar the clip starts on, 0-based. */
+  startBar: number
+}
+
+/** The playlist: which pattern plays where, played in SONG mode. */
+export interface StudioSong {
+  bars: number
+  trackCount: number
+  clips: SongClip[]
+}
+
 export interface StudioPreset {
   bpm: number
   steps: Record<string, number[]>
@@ -49,4 +71,5 @@ export interface StudioProject {
   stepData: StepData
   pianoNotes: PianoNotes
   mixerTracks: MixerTrack[]
+  song: StudioSong
 }

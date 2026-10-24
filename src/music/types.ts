@@ -60,6 +60,15 @@ export function midiToName(pitch: number): string {
   return `${NOTE_NAMES[pitch % 12]}${Math.floor(pitch / 12) - 1}`
 }
 
+/** "C4" -> 60. Accepts sharps and flats ("F#4", "Bb3"); returns null for anything else. */
+export function nameToMidi(name: string): number | null {
+  const match = /^([A-G])([#b]?)(-?\d)$/.exec(name)
+  if (!match) return null
+  const [, letter, accidental, octave] = match
+  const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[letter as 'C']
+  return (Number(octave) + 1) * 12 + semitone + (accidental === '#' ? 1 : accidental === 'b' ? -1 : 0)
+}
+
 export function isBlackKey(pitch: number): boolean {
   return NOTE_NAMES[pitch % 12].includes('#')
 }
