@@ -2,15 +2,19 @@ import * as Tone from 'tone'
 import { createTrackInstrument } from './instruments'
 import type { TrackInstrument } from './instruments'
 import { createDemoPattern, validatePattern } from './patterns'
-import { STEP_COUNT } from './types'
-import type { MusicalPattern, PlaybackListener, PlaybackState, Track } from './types'
+import { createMixBus } from './mixer'
+import { DRUM_VOICES, STEP_COUNT } from './types'
+import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
 /** Framework-independent sequencer. Construction does not create an AudioContext. */
 export class AudioEngine {
   private pattern: MusicalPattern
   private context: Tone.Context | null = null
   private master: Tone.Gain | null = null
+  private mixInput: Tone.Gain | null = null
   private limiter: Tone.Limiter | null = null
+  private masterBus: ReturnType<typeof createMixBus> | null = null
+  private meter: Tone.Meter | null = null
   private instruments = new Map<string, TrackInstrument>()
   private events: number[] = []
   private listeners = new Set<PlaybackListener>()
@@ -50,7 +54,9 @@ export class AudioEngine {
     if (!this.context) {
       // A private context keeps the existing app's Tone synths/transport intact.
       this.context = new Tone.Context({ latencyHint: 'interactive', lookAhead: 0.05 })
-      this.limiter = new Tone.Limiter({ context: this.context, threshold: -1 }).connect(this.context.destination)
+      this.meter = new Tone.Meter({ context: this.context, channelCount: 2, normalRange: true, smoothing: 0.7 }).connect(this.context.destination)
+      this.limiter = new Tone.Limiter({ context: this.context, threshold: -1 }).connect(this.meter)
+      // The final gate follows every effect, so Stop also silences feedback tails.
       this.master = new Tone.Gain({ context: this.context, gain: 0 }).connect(this.limiter)
     }
     const context = this.context
@@ -58,6 +64,41 @@ export class AudioEngine {
     if (this.status === 'disposed') return
     if (context.state !== 'running') throw new Error('Audio is suspended. Start playback from a click or tap.')
     this.emit()
+  }
+
+  /** Stereo RMS amplitudes for UI meters; reading this never initializes audio. */
+  getOutputLevels(): [number, number] {
+    if (!this.meter || this.context?.state !== 'running') return [0, 0]
+    const value = this.meter.getValue()
+    const values = Array.isArray(value) ? value : [value, value]
+    return [Math.min(1, values[0] ?? 0), Math.min(1, values[1] ?? 0)]
+  }
+
+  /** Audition through the same track/mixer/context without starting the Transport. */
+  async previewTrack(id: string, options: PreviewOptions = {}): Promise<void> {
+    const source = this.requireTrack(id)
+    let preview: Track
+    if (source.type === 'drums') {
+      const voice = options.drum ?? 'kick'
+      if (!DRUM_VOICES.includes(voice)) throw new TypeError('Unknown drum preview voice')
+      preview = { ...source, pattern: { kick: [], snare: [], closedHat: [], openHat: [], [voice]: [{ step: 0 }] } }
+    } else {
+      preview = { ...source, steps: [{ step: 0, notes: [{
+        pitch: options.pitch ?? source.steps[0]?.notes[0]?.pitch ?? (source.type === 'bass' ? 'C2' : 'C4'),
+        durationSteps: options.durationSteps ?? 2,
+        velocity: 0.8,
+      }] }] }
+    }
+    validatePattern({ ...this.pattern, tracks: [preview] })
+    const generation = this.generation
+    await this.initialize()
+    if (generation !== this.generation || !this.context || !this.master) return
+    const latest = this.pattern.tracks.find((track) => track.id === id)
+    if (!latest || latest.type !== preview.type) return
+    this.syncInstruments()
+    const time = this.context.now() + 0.005
+    this.master.gain.setValueAtTime(0.8, time)
+    this.instruments.get(id)?.playStep({ ...preview, muted: latest.muted }, 0, time, 60 / this.pattern.bpm / 4)
   }
 
   /** Repeated Play calls share one start operation and never stack schedulers. */
@@ -90,6 +131,10 @@ export class AudioEngine {
     this.events = []
     for (const instrument of this.instruments.values()) instrument.dispose()
     this.instruments.clear()
+    this.mixInput?.dispose()
+    this.masterBus?.dispose()
+    this.mixInput = null
+    this.masterBus = null
     this.status = 'stopped'
     this.step = null
     this.emit()
@@ -103,7 +148,8 @@ export class AudioEngine {
     if (this.context) {
       this.context.transport.bpm.value = this.pattern.bpm
       this.context.transport.loop = this.pattern.loop
-      if (this.status === 'playing') this.syncInstruments()
+      this.masterBus?.setMix(this.pattern.master ?? {})
+      if (this.status === 'playing' || this.instruments.size > 0) this.syncInstruments()
     }
     this.emit()
   }
@@ -142,11 +188,15 @@ export class AudioEngine {
     if (this.status === 'disposed') return
     this.stop()
     this.master?.dispose()
+    this.masterBus?.dispose()
     this.limiter?.dispose()
+    this.meter?.dispose()
     this.context?.dispose()
     this.context = null
     this.master = null
     this.limiter = null
+    this.masterBus = null
+    this.meter = null
     this.status = 'disposed'
     this.emit()
     this.listeners.clear()
@@ -167,8 +217,13 @@ export class AudioEngine {
         if (this.generation !== generation) return
         const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % STEP_COUNT
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
+        const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
+          track.pattern.closedHat.some((hit) => hit.step === step && hit.velocity !== 0))
         for (const track of this.pattern.tracks) {
           this.instruments.get(track.id)?.playStep(track, step, time, stepSeconds)
+        }
+        if (closedHat) {
+          for (const instrument of this.instruments.values()) instrument.chokeOpenHat?.(time)
         }
         context.draw.schedule(() => {
           if (this.generation !== generation) return
@@ -202,6 +257,12 @@ export class AudioEngine {
 
   private syncInstruments(): void {
     if (!this.context || !this.master) return
+    if (!this.masterBus) {
+      this.masterBus = createMixBus(this.context, this.master, this.pattern.master ?? {})
+      this.mixInput = new Tone.Gain({ context: this.context, gain: 1 }).connect(this.masterBus.input)
+    }
+    const destination = this.mixInput
+    if (!destination) return
     const tracks = new Map(this.pattern.tracks.map((track) => [track.id, track]))
     for (const [id, instrument] of this.instruments) {
       if (tracks.get(id)?.type !== instrument.type) {
@@ -211,7 +272,7 @@ export class AudioEngine {
     }
     for (const track of tracks.values()) {
       if (!this.instruments.has(track.id)) {
-        this.instruments.set(track.id, createTrackInstrument(this.context, this.master, track))
+        this.instruments.set(track.id, createTrackInstrument(this.context, destination, track))
       }
       this.instruments.get(track.id)?.setMix(track)
     }

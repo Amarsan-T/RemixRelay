@@ -1,16 +1,31 @@
 import assert from 'node:assert/strict'
 import { registerHooks } from 'node:module'
 import { extname } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
+import ts from 'typescript'
 
 // Node 24 strips TypeScript natively. Resolve the extensionless source imports
 // used by Vite without adding a test framework or modifying production imports.
 registerHooks({
   resolve(specifier, context, nextResolve) {
-    if (specifier.startsWith('.') && context.parentURL?.includes('/src/audio/') && !extname(specifier)) {
-      return nextResolve(new URL(`${specifier}.ts`, context.parentURL).href, context)
+    if (specifier.startsWith('.') && context.parentURL && !extname(specifier)) {
+      for (const suffix of ['.ts', '.tsx', '/index.ts']) {
+        const target = new URL(`${specifier}${suffix}`, context.parentURL)
+        if (existsSync(fileURLToPath(target))) return nextResolve(target.href, context)
+      }
     }
     return nextResolve(specifier, context)
+  },
+  load(url, context, nextLoad) {
+    if (url.endsWith('.tsx')) {
+      const source = ts.transpileModule(readFileSync(fileURLToPath(url), 'utf8'), {
+        compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2023 },
+      }).outputText
+      return { format: 'module', source, shortCircuit: true }
+    }
+    return nextLoad(url, context)
   },
 })
 
@@ -133,4 +148,127 @@ test('subscriptions, repeated stop, and terminal disposal work before audio init
   assert.throws(() => engine.setBpm(120), /disposed/)
   assert.throws(() => engine.play(), /disposed/)
   assert.throws(() => engine.subscribe(() => {}), /disposed/)
+})
+
+const { createStudioProject, PRESETS } = await import('../src/studio/data.ts')
+const { toAudioPattern } = await import('../src/studio/patternAdapter.ts')
+
+test('every studio preset maps all channels into valid engine data', () => {
+  for (const preset of Object.values(PRESETS)) {
+    const project = createStudioProject()
+    project.bpm = preset.bpm
+    project.stepData[1] = structuredClone(preset.steps)
+    project.pianoNotes[1] = structuredClone(preset.notes)
+    const pattern = toAudioPattern(project, 1)
+    validatePattern(pattern)
+    assert.equal(pattern.tracks.length, project.channels.length)
+    assert.equal(pattern.bpm, preset.bpm)
+    assert.equal(pattern.tracks.find((track) => track.id === 'clap').pattern.clap.length, preset.steps.clap.filter(Boolean).length)
+    const engine = new AudioEngine(pattern)
+    assert.deepEqual(engine.getPattern(), pattern)
+    engine.dispose()
+  }
+})
+
+test('authored notes take precedence without double-triggering and are independent of channel selection', () => {
+  const project = createStudioProject()
+  project.pianoNotes[1].bass808 = [{ step: 0, note: 'F2', length: 3 }]
+  project.pianoNotes[1].synth_lead = [
+    { step: 0, note: 'C4', length: 4 }, { step: 0, note: 'E4', length: 2 },
+  ]
+  const pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  const bass = pattern.tracks.find((track) => track.id === 'bass808')
+  const melody = pattern.tracks.find((track) => track.id === 'synth_lead')
+  assert.deepEqual(bass.steps[0].notes, [{ pitch: 'F2', durationSteps: 3, velocity: 0.8 }])
+  assert.deepEqual(melody.steps[0].notes.map((note) => note.pitch), ['C4', 'E4'])
+  assert.equal(melody.steps.filter((step) => step.step === 0).length, 1)
+  assert.equal(melody.steps.find((step) => step.step === 3).notes[0].pitch, 'A4')
+})
+
+test('pattern switching and edits preserve the other three patterns', () => {
+  const project = createStudioProject()
+  const original = toAudioPattern(project, 1)
+  const empty = toAudioPattern(project, 2)
+  assert.equal(empty.tracks.every((track) => track.type === 'drums'
+    ? Object.values(track.pattern).every((hits) => hits.length === 0)
+    : track.steps.length === 0), true)
+  project.stepData[2].kick[3] = 1
+  assert.equal(toAudioPattern(project, 2).tracks[0].pattern.kick[0].step, 3)
+  assert.deepEqual(toAudioPattern(project, 1), original)
+  const secondProject = createStudioProject()
+  assert.equal(secondProject.stepData[2].kick[3], 0)
+})
+
+test('channel and insert solo/mute combine, and zero volume is truly silent', () => {
+  const project = createStudioProject()
+  project.channels[0].solo = true
+  let pattern = toAudioPattern(project, 1)
+  assert.deepEqual(pattern.tracks.filter((track) => !track.muted).map((track) => track.id), ['kick'])
+  project.channels[0].solo = false
+  project.mixerTracks[3].solo = true
+  pattern = toAudioPattern(project, 1)
+  assert.deepEqual(pattern.tracks.filter((track) => !track.muted).map((track) => track.id), ['hat_closed', 'hat_open'])
+  project.channels[3].muted = true
+  project.channels[4].vol = 0
+  assert.equal(toAudioPattern(project, 1).tracks.every((track) => track.muted), true)
+  project.mixerTracks[3].solo = false
+  project.mixerTracks[1].mute = true
+  assert.equal(toAudioPattern(project, 1).tracks[0].muted, true)
+})
+
+test('mixer gain, pan, effects, master volume, and metronome reach the pattern', () => {
+  const project = createStudioProject()
+  project.channels[0].pan = -0.5
+  project.mixerTracks[1].pan = -0.75
+  project.mixerTracks[1].filter = 1500
+  project.mixerTracks[1].delay = 0.5
+  project.mixerTracks[1].dist = 0.3
+  project.mixerTracks[0].vol = 0
+  project.metronome = true
+  let pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  assert.equal(pattern.master.muted, true)
+  assert.equal(pattern.tracks[0].pan, -1)
+  assert.deepEqual(pattern.tracks[0].effects, { filterHz: 1500, delay: 0.5, distortion: 0.3 })
+  assert.equal(pattern.tracks.at(-1).id, '__metronome')
+  assert.deepEqual(pattern.tracks.at(-1).steps.map((entry) => entry.step), [0, 4, 8, 12])
+  project.mixerTracks[0].vol = 1.2
+  project.loop = false
+  pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  assert.equal(pattern.master.volumeDb > 0, true)
+  assert.equal(pattern.master.muted, false)
+  assert.equal(pattern.loop, false)
+})
+
+test('optional mixer fields validate without changing legacy pattern support', () => {
+  const pattern = createDemoPattern()
+  pattern.master = { volumeDb: 2, muted: false, pan: -1, effects: { delay: 0.8, distortion: 0.3, filterHz: 500 } }
+  pattern.tracks[0].pattern.clap = [{ step: 4, velocity: 0.5 }]
+  validatePattern(pattern)
+  for (const invalid of [
+    { ...pattern, master: { volumeDb: 7 } },
+    { ...pattern, master: { pan: NaN } },
+    { ...pattern, master: { effects: { delay: 0.9 } } },
+    { ...pattern, master: { effects: { distortion: -1 } } },
+    { ...pattern, master: { effects: { filterHz: 0 } } },
+  ]) assert.throws(() => validatePattern(invalid), TypeError)
+  const engine = new AudioEngine(pattern)
+  assert.deepEqual(engine.getOutputLevels(), [0, 0])
+  engine.dispose()
+  assert.deepEqual(engine.getOutputLevels(), [0, 0])
+})
+
+test('the studio renders at the React entry without allocating browser audio', async () => {
+  const React = await import('react')
+  const { renderToStaticMarkup } = await import('react-dom/server')
+  const { default: App } = await import('../src/App.tsx')
+  const html = renderToStaticMarkup(React.createElement(App))
+  for (const text of ['REMIXRELAY', 'Channel Rack', 'Trap Heat', 'Kick 808', 'Retro Lead']) assert.ok(html.includes(text))
+  for (const name of ['Play', 'Stop', 'Loop', 'Tempo BPM', 'Master volume', 'Kick 808 step 1']) {
+    assert.ok(html.includes(`aria-label="${name}"`), `Missing studio control ${name}`)
+  }
+  assert.ok(!html.includes('Get started'))
+  assert.ok(!html.includes('AudioContext'))
 })
