@@ -1,0 +1,163 @@
+.piano-roll {
+  --key-w: 64px;
+  --ruler-h: 24px;
+  --roll-bg: #1b1c24;
+  --row-black: #16171e;
+  --line: rgba(255, 255, 255, 0.05);
+  --line-beat: rgba(255, 255, 255, 0.1);
+  --line-bar: rgba(255, 255, 255, 0.22);
+
+  position: relative;
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid #2e303a;
+  border-radius: 10px;
+  background: var(--roll-bg);
+  user-select: none;
+  touch-action: none;
+}
+
+.pr-layout {
+  display: grid;
+  grid-template-rows: var(--ruler-h) auto;
+  width: max-content;
+}
+
+/* Sticky header row and key column so they stay put while scrolling. */
+.pr-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  background: #23242e;
+  border-bottom: 1px solid #2e303a;
+}
+
+.pr-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #23242e;
+  border-bottom: 1px solid #2e303a;
+}
+
+.pr-ruler span {
+  position: absolute;
+  top: 3px;
+  padding-left: 6px;
+  font: 12px var(--mono);
+  color: #9ca3af;
+  border-left: 1px solid var(--line-bar);
+  height: 18px;
+}
+
+.pr-keys {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #2e303a;
+}
+
+.pr-key {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0 6px 0 0;
+  border: none;
+  border-bottom: 1px solid #c9c9d1;
+  font: 10px var(--mono);
+  text-align: right;
+  cursor: pointer;
+}
+
+.pr-key.white {
+  background: #f2f2f5;
+  color: #444;
+}
+
+.pr-key.black {
+  background: #2a2b33;
+  border-bottom-color: #111;
+  /* Shorter, like a real keyboard. */
+  margin-right: 22px;
+  border-radius: 0 3px 3px 0;
+}
+
+.pr-key:active {
+  background: var(--note);
+}
+
+.pr-grid {
+  position: relative;
+  cursor: crosshair;
+}
+
+.pr-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--line);
+}
+
+.pr-row.black {
+  background: var(--row-black);
+}
+
+.pr-row.octave {
+  border-bottom-color: var(--line-beat);
+}
+
+.pr-lines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    repeating-linear-gradient(to right, var(--line-bar) 0 1px, transparent 1px var(--bar-w)),
+    repeating-linear-gradient(to right, var(--line-beat) 0 1px, transparent 1px var(--beat-w)),
+    repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px var(--cell-w));
+}
+
+.pr-note {
+  position: absolute;
+  z-index: 1;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding-left: 4px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--note);
+  border: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  font: 10px var(--mono);
+  color: rgba(0, 0, 0, 0.7);
+  cursor: grab;
+}
+
+.pr-note:active {
+  cursor: grabbing;
+}
+
+/* Right-edge resize handle. */
+.pr-note::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  background: linear-gradient(to right, transparent, rgba(0, 0, 0, 0.2));
+}
+
+.pr-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.08);
+  border-left: 2px solid #fff;
+}
