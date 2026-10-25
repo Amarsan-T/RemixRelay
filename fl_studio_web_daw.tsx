@@ -261,21 +261,21 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   const ticks = (currentStep % 4) + 1;
 
   return (
-    <div className="flex flex-col h-screen w-full bg-[#181a1d] text-zinc-200 select-none font-sans overflow-hidden">
+    <div className="flex flex-col h-screen w-full aero-sky text-zinc-200 select-none overflow-hidden">
       {/* ==================================================== */}
       {/* 1. TOP TRANSPORT BAR (FL Studio Classic Toolbar)     */}
       {/* ==================================================== */}
-      <header className="flex flex-wrap items-center justify-between px-3 py-2 bg-[#212529] border-b border-zinc-800 shadow-md gap-2 z-20">
+      <header className="aero-glass-dark aero-gloss flex flex-wrap items-center justify-between px-3 py-2 gap-2 z-20 border-x-0 border-t-0">
         
         {/* Left: Brand & Mode Toggle */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 pr-2 border-r border-zinc-700/60">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-600 via-orange-500 to-yellow-400 flex items-center justify-center shadow-lg shadow-orange-500/20">
-              <Sparkles className="w-4 h-4 text-zinc-950 font-bold" />
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 pr-2.5 border-r border-white/10">
+            <div className="aero-pill aero-aqua w-8 h-8 shrink-0">
+              <Sparkles className="w-4 h-4" />
             </div>
             <div className="leading-tight">
-              <span className="text-sm font-black tracking-wider text-orange-400 block font-mono">REMIXRELAY</span>
-              <span className="text-[10px] text-zinc-400 uppercase tracking-widest font-semibold block max-w-40 truncate">{projectName ?? 'Music Studio'}</span>
+              <span className="text-sm font-semibold tracking-[0.18em] text-white block">REMIXRELAY</span>
+              <span className="text-[10px] text-aero-glow/80 uppercase tracking-widest font-semibold block max-w-40 truncate">{projectName ?? 'Music Studio'}</span>
             </div>
           </div>
 
@@ -285,7 +285,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-label="Home"
               title="Back to your projects"
               onClick={() => { handleStop(); onHome(); }}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-bold rounded border border-zinc-700/80 bg-zinc-900/90 text-zinc-300 hover:text-orange-400"
+              className="aero-pill aero-smoke px-2.5 py-1 text-xs"
             >
               <Home className="w-3.5 h-3.5" /> HOME
             </button>
@@ -297,7 +297,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-label="Copy share link"
               title="Copy a link anyone can open to edit this project with you"
               onClick={copyShareLink}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-bold rounded border border-zinc-700/80 bg-zinc-900/90 text-zinc-300 hover:text-orange-400"
+              className="aero-pill aero-smoke px-2.5 py-1 text-xs"
             >
               {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Link className="w-3.5 h-3.5" />}
               {linkCopied ? 'COPIED' : 'SHARE'}
@@ -310,7 +310,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-label="Save status"
               title={saveState === 'error' ? 'Not saved yet. Retrying.' : saveState === 'saving' ? 'Saving your changes' : 'All changes saved'}
               className={`flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider ${
-                saveState === 'error' ? 'text-red-400' : saveState === 'saving' ? 'text-amber-300' : 'text-zinc-500'
+                saveState === 'error' ? 'text-red-300' : saveState === 'saving' ? 'text-amber-200' : 'text-sky-100/60'
               }`}
             >
               {saveState === 'error' ? <CloudOff className="w-3.5 h-3.5" /> : <Cloud className="w-3.5 h-3.5" />}
@@ -319,12 +319,12 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
           )}
 
           {/* Mode Switcher: PAT vs SONG */}
-          <div className="flex items-center bg-zinc-900/90 p-0.5 rounded border border-zinc-700/80">
+          <div className="aero-well flex items-center p-0.5">
             <button
               aria-label="Pattern playback mode"
               aria-pressed={playMode === 'pattern'}
               onClick={() => setPlayMode('pattern')}
-              className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'pattern' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-2.5 py-1 text-xs ${playMode === 'pattern' ? 'aero-pill aero-aqua' : 'rounded-full font-semibold text-sky-100/70 hover:text-white'}`}
             >
               PAT
             </button>
@@ -333,24 +333,24 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-pressed={playMode === 'song'}
               title="Play the whole playlist"
               onClick={() => setPlayMode('song')}
-              className={`px-2.5 py-1 text-xs font-mono font-bold rounded ${playMode === 'song' ? 'bg-orange-500 text-zinc-950 shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}`}
+              className={`px-2.5 py-1 text-xs ${playMode === 'song' ? 'aero-pill aero-aqua' : 'rounded-full font-semibold text-sky-100/70 hover:text-white'}`}
             >
               SONG
             </button>
           </div>
 
           {/* Pattern Selector */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 px-2 py-1 rounded border border-zinc-700/80 max-w-72 overflow-x-auto">
-            <Layers className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <span className="text-xs text-zinc-400 font-mono">PAT:</span>
+          <div className="aero-well flex items-center gap-1 px-2 py-1 max-w-72 overflow-x-auto">
+            <Layers className="w-3.5 h-3.5 text-aero-glow shrink-0" />
+            <span className="text-xs font-semibold text-sky-100/70">PAT:</span>
             {patterns.map(num => (
               <button
                 key={num}
                 onClick={() => setActivePattern(num)}
-                className={`min-w-5 h-5 px-0.5 shrink-0 text-xs font-mono font-bold rounded flex items-center justify-center transition-all ${
+                className={`min-w-5 h-5 px-1 shrink-0 text-xs flex items-center justify-center transition-all ${
                   activePattern === num
-                    ? 'bg-orange-500 text-zinc-950 shadow'
-                    : 'text-zinc-400 hover:bg-zinc-800'
+                    ? 'aero-pill aero-aqua'
+                    : 'rounded-full font-semibold text-sky-100/70 hover:bg-white/10 hover:text-white'
                 }`}
               >
                 {num}
@@ -362,7 +362,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               disabled={patterns.length >= MAX_PATTERNS}
               aria-label="New pattern"
               title="Add a pattern"
-              className="w-5 h-5 shrink-0 text-xs font-mono font-bold rounded flex items-center justify-center text-zinc-400 hover:bg-zinc-800 hover:text-orange-400 border border-dashed border-zinc-700"
+              className="w-5 h-5 shrink-0 text-xs font-bold rounded-full flex items-center justify-center text-sky-100/70 hover:bg-white/10 hover:text-white border border-dashed border-sky-200/40"
             >
               +
             </button>
@@ -372,18 +372,14 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
         {/* Center: Playback Controls & LED Displays */}
         <div className="flex items-center gap-3">
           {/* Main Transport Buttons */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-md border border-zinc-700/80 shadow-inner">
+          <div className="aero-well flex items-center gap-1.5 p-1">
             <button
               onClick={handlePlay}
               aria-label="Play"
               aria-pressed={isPlaying}
               disabled={playback.status === 'starting'}
               title="Play (Space)"
-              className={`p-2 rounded transition-all ${
-                isPlaying 
-                  ? 'bg-emerald-500 text-zinc-950 shadow-[0_0_12px_rgba(16,185,129,0.7)]' 
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
+              className={`w-8 h-8 ${isPlaying ? 'aero-pill aero-lime' : 'aero-pill aero-smoke'}`}
             >
               <Play className="w-4 h-4 fill-current" />
             </button>
@@ -392,11 +388,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-label="Loop"
               aria-pressed={loop}
               title={loop ? 'Loop enabled' : 'Play one bar'}
-              className={`p-2 rounded transition-all ${
-                loop
-                  ? 'bg-amber-500 text-zinc-950 shadow-[0_0_12px_rgba(245,158,11,0.6)]'
-                  : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
-              }`}
+              className={`w-8 h-8 ${loop ? 'aero-pill aero-aqua' : 'aero-pill aero-smoke'}`}
             >
               <RotateCcw className="w-4 h-4" />
             </button>
@@ -404,37 +396,37 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               onClick={handleStop}
               aria-label="Stop"
               title="Stop"
-              className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded transition-all active:scale-95"
+              className="aero-pill aero-smoke w-8 h-8"
             >
               <Square className="w-4 h-4 fill-current" />
             </button>
           </div>
 
           {/* FL Studio Signature Digital LCD Counter */}
-          <div className="flex items-center gap-3 bg-black/90 px-3 py-1.5 rounded border border-zinc-800 shadow-inner">
+          <div className="aero-lcd flex items-center gap-2.5 px-3 py-1.5 rounded-xl">
             <div className="text-right">
-              <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono block leading-none">Pos</span>
-              <span className="text-emerald-400 font-mono text-sm tracking-widest font-black drop-shadow-[0_0_6px_rgba(52,211,153,0.5)]">
+              <span className="text-[9px] uppercase tracking-wider text-sky-200/50 block leading-none">Pos</span>
+              <span className="font-mono text-sm tracking-widest font-bold">
                 0{bars}:0{beats}:0{ticks}
               </span>
             </div>
-            <div className="h-6 w-px bg-zinc-800" />
+            <div className="h-6 w-px bg-white/10" />
             <div>
-              <span className="text-[9px] uppercase tracking-wider text-zinc-500 font-mono block leading-none">Step</span>
-              <span className="text-orange-400 font-mono text-sm font-black drop-shadow-[0_0_6px_rgba(251,146,60,0.5)]">
+              <span className="text-[9px] uppercase tracking-wider text-sky-200/50 block leading-none">Step</span>
+              <span className="font-mono text-sm font-bold text-lime-300 [text-shadow:0_0_6px_rgba(190,242,100,0.6)]">
                 {String(stepInBar + 1).padStart(2, '0')} / 16
               </span>
             </div>
           </div>
 
           {/* BPM Control & Tap Tempo */}
-          <div className="flex items-center gap-1.5 bg-zinc-900/90 px-2 py-1 rounded border border-zinc-700/80">
+          <div className="aero-well flex items-center gap-1.5 px-2.5 py-1">
             <div className="flex flex-col items-center">
-              <span className="text-[9px] font-mono text-zinc-400 leading-none">TEMPO</span>
+              <span className="text-[9px] font-semibold tracking-wider text-sky-100/60 leading-none">TEMPO</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => setBpm(b => Math.max(MIN_BPM, b - 1))}
-                  className="w-4 h-4 bg-zinc-800 hover:bg-zinc-700 rounded text-xs flex items-center justify-center text-zinc-300"
+                  className="aero-pill aero-smoke w-5 h-5 text-xs"
                 >
                   -
                 </button>
@@ -446,11 +438,11 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                   step="1"
                   value={bpm}
                   onChange={(e) => setBpm(Math.min(MAX_BPM, Math.max(MIN_BPM, Number(e.target.value) || 120)))}
-                  className="w-12 bg-black text-center text-orange-400 font-mono font-bold text-xs py-0.5 rounded border border-zinc-700 outline-none"
+                  className="aero-lcd w-12 text-center font-mono font-bold text-xs py-0.5 rounded-full outline-none"
                 />
                 <button
                   onClick={() => setBpm(b => Math.min(MAX_BPM, b + 1))}
-                  className="w-4 h-4 bg-zinc-800 hover:bg-zinc-700 rounded text-xs flex items-center justify-center text-zinc-300"
+                  className="aero-pill aero-smoke w-5 h-5 text-xs"
                 >
                   +
                 </button>
@@ -459,7 +451,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             <button
               onClick={handleTapTempo}
               title="Tap Tempo"
-              className="px-2 py-1 text-[10px] font-mono font-bold bg-zinc-800 hover:bg-orange-500 hover:text-black text-orange-400 rounded border border-zinc-700 active:scale-95 transition-all"
+              className="aero-pill aero-smoke px-2 py-1 text-[10px] tracking-wider"
             >
               TAP
             </button>
@@ -471,11 +463,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             title="Metronome"
             aria-label="Metronome"
             aria-pressed={metronome}
-            className={`p-2 rounded border transition-all ${
-              metronome
-                ? 'bg-orange-500 text-zinc-950 border-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.5)]'
-                : 'bg-zinc-800/80 text-zinc-400 border-zinc-700 hover:text-zinc-200'
-            }`}
+            className={`w-8 h-8 ${metronome ? 'aero-pill aero-aqua' : 'aero-pill aero-smoke'}`}
           >
             <Radio className="w-4 h-4" />
           </button>
@@ -484,8 +472,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
         {/* Right: Master Volume & Stereo Visualizer Canvas */}
         <div className="flex items-center gap-3">
           {/* Master Volume */}
-          <div className="flex items-center gap-1.5 bg-zinc-900/90 px-2 py-1 rounded border border-zinc-700/80">
-            <Volume2 className="w-3.5 h-3.5 text-zinc-400" />
+          <div className="aero-well flex items-center gap-1.5 px-2.5 py-1">
+            <Volume2 className="w-3.5 h-3.5 text-sky-100/70" />
             <input
               type="range"
               min="0"
@@ -494,16 +482,16 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               aria-label="Master volume"
               value={masterVol}
               onChange={(e) => setMasterVol(parseFloat(e.target.value))}
-              className="w-16 h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+              className="w-14 h-1.5 rounded-lg cursor-pointer accent-sky-400"
               title={`Master Vol: ${Math.round(masterVol * 100)}%`}
             />
-            <span className="text-[10px] font-mono text-zinc-400 w-7 text-right">
+            <span className="text-[10px] font-mono text-sky-100/70 w-7 text-right">
               {Math.round(masterVol * 100)}%
             </span>
           </div>
 
           {/* Stereo Master Peak LEDs Canvas */}
-          <div className="bg-zinc-950 p-1 rounded border border-zinc-800 shadow-inner flex flex-col items-center">
+          <div className="aero-lcd p-1 rounded-lg flex flex-col items-center">
             <canvas
               ref={masterMeterCanvasRef}
               width={28}
@@ -511,7 +499,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
               className="rounded"
               title="Master Stereo Peak Meter"
             />
-            <span className="text-[8px] font-mono text-zinc-500 tracking-tighter">OUT</span>
+            <span className="text-[8px] text-sky-200/50 tracking-wider">OUT</span>
           </div>
         </div>
       </header>
