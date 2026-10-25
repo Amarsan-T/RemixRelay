@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Play, Square, Volume2, RotateCcw, Sliders, Music, Grid, Sparkles,
-  Trash2, Zap, Radio, Layers, ListMusic, Home,
+  Trash2, Zap, Radio, Layers, ListMusic, Home, Cloud, CloudOff, Link, Check,
 } from 'lucide-react';
 import { MAX_BPM, MIN_BPM } from './src/audio';
 import { PRESETS } from './src/studio/data';
@@ -12,6 +12,7 @@ import { PatternLengthControl } from './src/studio/PatternLengthControl';
 import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
 import { StudioPlaylist } from './src/studio/StudioPlaylist';
 import type { MixerParam, StepData, StudioChannel, StudioProject } from './src/studio/types';
+import type { ProjectChange } from './src/studio/projectSync';
 
 type StudioProps = {
   /** Project to open. Without one, the studio starts with the Trap Heat demo. */
@@ -22,13 +23,37 @@ type StudioProps = {
   onProjectChange?: (project: StudioProject) => void;
   /** Shows a HOME button that calls this. */
   onHome?: () => void;
+  /**
+   * Connects the studio to live sync: it's given a function that merges edits
+   * from other browsers into the studio, and returns a disconnect.
+   */
+  connectRemote?: (apply: (changes: readonly ProjectChange[]) => void) => () => void;
+  /** Shows whether edits have reached the server. */
+  saveState?: 'saved' | 'saving' | 'error';
+  /** Shows a Share button that copies this link. */
+  shareUrl?: string;
 };
 
-export default function App({ initialProject, projectName, onProjectChange, onHome }: StudioProps) {
+export default function App({ initialProject, projectName, onProjectChange, onHome, connectRemote, saveState, shareUrl }: StudioProps) {
   const {
-    project, setBpm, setLoop, setMetronome, setChannels,
+    project, applyChanges, setBpm, setLoop, setMetronome, setChannels,
     setStepData, setPianoNotes, setMixerTracks, setSong, setPatternSteps, setPatternCount,
   } = useStudioProject(initialProject);
+
+  // Edits made in another browser merge into the latest state. Playback picks them up like local edits.
+  useEffect(() => connectRemote?.(applyChanges), [connectRemote, applyChanges]);
+  const [linkCopied, setLinkCopied] = useState(false);
+  const copyShareLink = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      // Clipboard access can be refused (e.g. plain http); show the link instead.
+      window.prompt('Copy this link to share the project:', shareUrl);
+    }
+  };
 
   // Report edits upward. The callback sits in a ref so a new function from the
   // parent on each render doesn't re-run this; opening a project isn't an edit.
@@ -264,6 +289,33 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             >
               <Home className="w-3.5 h-3.5" /> HOME
             </button>
+          )}
+
+          {shareUrl && (
+            <button
+              type="button"
+              aria-label="Copy share link"
+              title="Copy a link anyone can open to edit this project with you"
+              onClick={copyShareLink}
+              className="flex items-center gap-1 px-2.5 py-1 text-xs font-mono font-bold rounded border border-zinc-700/80 bg-zinc-900/90 text-zinc-300 hover:text-orange-400"
+            >
+              {linkCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Link className="w-3.5 h-3.5" />}
+              {linkCopied ? 'COPIED' : 'SHARE'}
+            </button>
+          )}
+
+          {saveState && (
+            <span
+              role="status"
+              aria-label="Save status"
+              title={saveState === 'error' ? 'Not saved yet. Retrying.' : saveState === 'saving' ? 'Saving your changes' : 'All changes saved'}
+              className={`flex items-center gap-1 text-[10px] font-mono uppercase tracking-wider ${
+                saveState === 'error' ? 'text-red-400' : saveState === 'saving' ? 'text-amber-300' : 'text-zinc-500'
+              }`}
+            >
+              {saveState === 'error' ? <CloudOff className="w-3.5 h-3.5" /> : <Cloud className="w-3.5 h-3.5" />}
+              {saveState === 'error' ? 'Offline' : saveState === 'saving' ? 'Saving' : 'Saved'}
+            </span>
           )}
 
           {/* Mode Switcher: PAT vs SONG */}
