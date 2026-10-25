@@ -277,14 +277,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     background: #1ba1e2; /* Metro cyan */
   }
 
-  /* A flat, square Metro live tile: no gloss, no rounded corners. */
-  .metro-tile {
-    display: flex;
-    align-items: flex-end;
-    padding: 10px;
-    color: rgba(255, 255, 255, 0.9);
-  }
-
   /* The huge, faint view name behind the panels. */
   .metro-watermark {
     font-weight: 200;
