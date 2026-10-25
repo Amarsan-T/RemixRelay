@@ -46,7 +46,8 @@ export function createOutputGuard(context: Tone.Context) {
 /** A Tone-only signal chain shared by track racks and the master bus. */
 export function createMixBus(context: Tone.Context, destination: Tone.ToneAudioNode, initial: MixSettings) {
   const input = new Tone.Gain({ context, gain: 1 })
-  const distortion = new Tone.Distortion({ context, distortion: 0, wet: 0, oversample: '2x' })
+  // Oversampling only while distortion is in use: it costs audio-thread time on every channel even when dry.
+  const distortion = new Tone.Distortion({ context, distortion: 0, wet: 0, oversample: 'none' })
   const filter = new Tone.Filter({ context, type: 'lowpass', frequency: 20000, Q: 0.5 })
   const delay = new Tone.FeedbackDelay({ context, delayTime: 0.25, maxDelay: 1, feedback: 0, wet: 0 })
   const pan = new Tone.Panner({ context, pan: 0 })
@@ -64,6 +65,8 @@ export function createMixBus(context: Tone.Context, destination: Tone.ToneAudioN
     filter.frequency.rampTo(settings.effects?.filterHz ?? 20000, 0.01, now)
     const amount = settings.effects?.distortion ?? 0
     if (distortion.distortion !== amount) distortion.distortion = amount
+    const oversample = amount === 0 ? 'none' : '2x'
+    if (distortion.oversample !== oversample) distortion.oversample = oversample
     distortion.wet.rampTo(amount === 0 ? 0 : 1, 0.01, now)
     const send = settings.effects?.delay ?? 0
     delay.wet.rampTo(send, 0.01, now)

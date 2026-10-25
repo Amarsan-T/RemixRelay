@@ -97,9 +97,13 @@ export class AudioEngine {
     this.assertUsable()
     if (!this.context) {
       // A private context keeps the existing app's Tone synths/transport intact.
-      // Notes are scheduled 100 ms ahead (Tone's default), so a brief page hiccup
-      // can't make them late. 50 ms was too tight for the studio UI.
-      this.context = new Tone.Context({ latencyHint: 'interactive', lookAhead: 0.1 })
+      // Notes are scheduled 250 ms ahead: on slower computers the page stalled for
+      // 150-180 ms during playback, longer than the old 100 ms, and every note due
+      // in a stall was dropped (heard as buffering). 'playback' asks for a larger
+      // audio buffer, so a busy audio thread doesn't run dry and crackle; previews
+      // skip the look-ahead, so only the buffer (tens of ms) delays them.
+      // Play starts after the look-ahead (context.now()); starting sooner silences the run.
+      this.context = new Tone.Context({ latencyHint: 'playback', lookAhead: 0.25 })
       this.meter = new Tone.Meter({ context: this.context, channelCount: 2, normalRange: true, smoothing: 0.7 }).connect(this.context.destination)
       this.guard = createOutputGuard(this.context)
       this.guard.output.connect(this.meter)
