@@ -1,8 +1,29 @@
 @import "tailwindcss";
 @source "../fl_studio_web_daw.tsx";
 
+/* ==========================================================================
+   Frutiger Aero design system
+   Everything below is drawn with CSS (gradients, blur, shadows): no image
+   files, so no licensing questions and nothing AI-generated.
+   Colors become Tailwind classes: --color-aero-sky -> bg-aero-sky, text-aero-sky...
+   ========================================================================== */
+@theme {
+  /* Segoe UI is the real Vista/7 font and ships with Windows. Selawik is
+     Microsoft's open-source (OFL) stand-in for other systems, if installed. */
+  --font-aero: 'Segoe UI', 'Selawik', system-ui, sans-serif;
+
+  --color-aero-sky: #7fd4ff;
+  --color-aero-sky-light: #d9f4ff;
+  --color-aero-aqua: #1ea7f2;
+  --color-aero-aqua-dark: #0a72c2;
+  --color-aero-grass: #8fd97f;
+  --color-aero-ink: #0b3954;      /* text on light glass */
+  --color-aero-ink-soft: #3d6a85;
+  --color-aero-glow: #7fe3ff;     /* LCD text, focus rings */
+}
+
 :root {
-  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--font-aero);
   color-scheme: dark;
   color: #e4e4e7;
   background: #181a1d;
@@ -15,4 +36,184 @@
 html, body, #root { margin: 0; width: 100%; min-height: 100%; }
 button:not(:disabled) { cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
-:focus-visible { outline: 2px solid #fb923c; outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--color-aero-glow); outline-offset: 2px; }
+
+@layer components {
+  /* ---- Backgrounds ------------------------------------------------------ */
+
+  /* Bright sky fading to a hint of green hills. Bubbles are separate elements (AeroBackground). */
+  .aero-sky {
+    background:
+      radial-gradient(ellipse 80% 40% at 15% 105%, rgba(143, 217, 127, 0.75), transparent 70%),
+      radial-gradient(ellipse 70% 35% at 85% 108%, rgba(120, 205, 110, 0.7), transparent 70%),
+      radial-gradient(ellipse 60% 50% at 70% 10%, rgba(255, 255, 255, 0.6), transparent 70%),
+      linear-gradient(180deg, #4fbdf5 0%, #9fdfff 45%, #e6f8ff 75%, #c9f0c0 100%);
+  }
+
+  /* One floating soap bubble: a bright rim, a highlight dot, and a faint tint. */
+  .aero-bubble {
+    position: absolute;
+    border-radius: 9999px;
+    pointer-events: none;
+    background:
+      radial-gradient(circle at 30% 28%, rgba(255, 255, 255, 0.95) 0 8%, transparent 14%),
+      radial-gradient(circle at 50% 50%, transparent 58%, rgba(255, 255, 255, 0.55) 70%, rgba(180, 235, 255, 0.35) 100%);
+    box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.5), 0 0 18px rgba(127, 212, 255, 0.25);
+    animation: aero-float var(--float-time, 14s) ease-in-out infinite alternate;
+  }
+
+  /* ---- Glass surfaces --------------------------------------------------- */
+
+  /* Light frosted glass (Vista / Liquid Glass). Use dark text on it. */
+  .aero-glass {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.25));
+    backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      inset 0 -10px 24px rgba(255, 255, 255, 0.12),
+      0 10px 30px rgba(0, 70, 130, 0.22);
+  }
+
+  /* Smoky dark glass, like the Windows 7 taskbar. Use light text on it. */
+  .aero-glass-dark {
+    background: linear-gradient(180deg, rgba(40, 70, 95, 0.78), rgba(10, 25, 40, 0.86));
+    backdrop-filter: blur(14px) saturate(140%);
+    border: 1px solid rgba(160, 220, 255, 0.28);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.28),
+      0 6px 20px rgba(0, 20, 40, 0.45);
+  }
+
+  /* The signature shine: a bright highlight on the top half. Add next to a glass class. */
+  .aero-gloss { position: relative; isolation: isolate; }
+  .aero-gloss::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 52% 0;
+    border-radius: inherit;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0.06));
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  /* A recessed area inside dark glass, grouping related controls. */
+  .aero-well {
+    background: rgba(0, 15, 30, 0.35);
+    border: 1px solid rgba(160, 220, 255, 0.18);
+    box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.08);
+    border-radius: 9999px;
+  }
+
+  /* ---- Buttons ---------------------------------------------------------- */
+
+  /* Shared glossy pill shape; color comes from the variants below. */
+  .aero-pill {
+    position: relative;
+    isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    transition: filter 120ms, transform 80ms, box-shadow 120ms;
+  }
+  .aero-pill::before {
+    content: '';
+    position: absolute;
+    inset: 1px 1px 50% 1px;
+    border-radius: 9999px 9999px 40% 40% / 9999px 9999px 60% 60%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.1));
+    pointer-events: none;
+    z-index: -1;
+  }
+  .aero-pill:hover:not(:disabled) { filter: brightness(1.08); }
+  .aero-pill:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.95); }
+
+  /* Aqua: the main call to action (New project, active toggles). */
+  .aero-aqua {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 40, 90, 0.55);
+    background: linear-gradient(180deg, #6fd3ff 0%, #1ea7f2 55%, #0a84d6 100%);
+    border: 1px solid #0567b0;
+    box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.35), 0 2px 8px rgba(0, 90, 170, 0.4);
+  }
+
+  /* Green: "running" states (Play while playing). */
+  .aero-lime {
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 60, 20, 0.55);
+    background: linear-gradient(180deg, #a8f07a 0%, #4cc43a 55%, #2a9a24 100%);
+    border: 1px solid #237a1e;
+    box-shadow: inset 0 0 6px rgba(255, 255, 255, 0.35), 0 0 12px rgba(90, 220, 80, 0.55);
+  }
+
+  /* Clear glass button on dark glass (secondary actions). */
+  .aero-smoke {
+    color: #dff4ff;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.04));
+    border: 1px solid rgba(170, 225, 255, 0.35);
+    box-shadow: inset 0 0 4px rgba(255, 255, 255, 0.12);
+  }
+  .aero-smoke:hover:not(:disabled) { border-color: rgba(127, 227, 255, 0.8); color: #fff; }
+
+  /* Clear glass button on light glass. */
+  .aero-frost {
+    color: var(--color-aero-ink);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.85), rgba(225, 243, 255, 0.6));
+    border: 1px solid rgba(110, 180, 220, 0.7);
+    box-shadow: 0 2px 6px rgba(0, 80, 140, 0.18);
+  }
+
+  /* ---- Inputs and displays ---------------------------------------------- */
+
+  /* Bubbly text box for light surfaces. */
+  .aero-input {
+    border-radius: 9999px;
+    color: var(--color-aero-ink);
+    background: linear-gradient(180deg, #ffffff, #eef8ff);
+    border: 1px solid #9ccbe8;
+    box-shadow: inset 0 2px 4px rgba(0, 60, 120, 0.15);
+    transition: box-shadow 120ms, border-color 120ms;
+  }
+  .aero-input:focus-within, .aero-input:focus {
+    outline: none;
+    border-color: var(--color-aero-aqua);
+    box-shadow: 0 0 0 3px rgba(80, 190, 255, 0.4), inset 0 2px 4px rgba(0, 60, 120, 0.15);
+  }
+
+  /* Glossy black LCD screen with glowing text (position counter, tempo box). */
+  .aero-lcd {
+    color: var(--color-aero-glow);
+    text-shadow: 0 0 6px rgba(127, 227, 255, 0.65);
+    background: linear-gradient(180deg, #13222e 0%, #04090e 55%, #0b151d 100%);
+    border: 1px solid rgba(127, 227, 255, 0.3);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
+  /* ---- Typography ------------------------------------------------------- */
+
+  /* Metro-style headline: big, thin, tight. */
+  .metro-title {
+    font-weight: 300;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+}
+
+@keyframes aero-float {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(var(--drift-x, 12px), var(--drift-y, -24px), 0); }
+}
+
+/* Some people find motion or see-through surfaces hard to read: respect their settings. */
+@media (prefers-reduced-motion: reduce) {
+  .aero-bubble { animation: none; }
+}
+/* Windows' "Transparency effects: off" turns this on. Only the see-through blur goes:
+   the gradients and gloss stay, so it still looks like Aero, just opaque. */
+@media (prefers-reduced-transparency: reduce) {
+  .aero-glass { background: linear-gradient(180deg, #f7fcff, #ddf0fb); backdrop-filter: none; }
+  .aero-glass-dark { background: linear-gradient(180deg, #2b4c66, #0d2132); backdrop-filter: none; }
+}
