@@ -7,16 +7,14 @@
   "git": {
     "deploymentEnabled": false
   },
-  "builds": [
+  "rewrites": [
     {
-      "src": "backend/main.py",
-      "use": "@vercel/python"
-    }
-  ],
-  "routes": [
+      "source": "/startInquiry",
+      "destination": "/backend/main.py"
+    },
     {
-      "src": "/(.*)",
-      "dest": "backend/main.py"
+      "source": "/aiAssist",
+      "destination": "/backend/main.py"
     }
   ]
 }
