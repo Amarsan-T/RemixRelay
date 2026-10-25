@@ -369,3 +369,53 @@ test('invalid atomic changes reject the entire transaction and preserve data/ver
   ] })).rejects.toThrow('Not a project field')
   expect(await t.query(api.projects.get, { id: projectId })).toEqual(before)
 })
+
+// ---- AI note suggestions ----------------------------------------------------
+async function trapProject() {
+  const { createStudioProject } = await import('../src/studio/data')
+  const { toStored } = await import('../src/studio/projectSync')
+  return t.mutation(api.projects.create, { name: 'Coach song', color: '#1ea7f2', data: toStored(createStudioProject('Trap Heat')) })
+}
+const suggestionReply = (items: unknown) =>
+  'A long E4 makes it dreamier.\n<note-suggestions>' + JSON.stringify({ summary: 'Dreamier lead', items }) + '</note-suggestions>'
+
+test('a reply with note suggestions stores checked suggestions and hides the block', async () => {
+  projectId = await trapProject()
+  fetchMock.mockImplementationOnce(async () => response(suggestionReply([
+    { action: 'add', channel: 'Retro Lead', pattern: 1, step: 9, note: 'E4', length: 4, why: 'Calm and open' },
+    { action: 'remove', channel: 'Kick 808', pattern: 1, step: 7 },
+    { action: 'add', channel: 'Ghost Synth', pattern: 1, step: 2, note: 'C4' },
+  ])))
+  await send('I want a dreamy, relaxing melody.')
+  await flush()
+  const answer = await reply()
+  expect(answer).toMatchObject({ status: 'complete', content: 'A long E4 makes it dreamier.' })
+  expect(answer.suggestions).toEqual({
+    summary: 'Dreamier lead', skipped: 1,
+    items: [
+      { action: 'add', channelId: 'synth_lead', channelName: 'Retro Lead', pattern: 1, step: 8, note: 'E4', length: 4, why: 'Calm and open' },
+      { action: 'remove', channelId: 'kick', channelName: 'Kick 808', pattern: 1, step: 6 },
+    ],
+  })
+  // Suggestions never change the project by themselves.
+  const saved = (await t.query(api.projects.get, { id: projectId }))!
+  expect(saved.version).toBe(1)
+  expect(saved.data.stepData[1].kick[6]).toBe(1)
+
+  // The follow-up request reminds Claude what it highlighted, without the raw block.
+  await send('Why that note?')
+  await flush()
+  const body = JSON.parse(fetchMock.mock.calls.at(-1)![1].body)
+  expect(body.history[1].content).toContain('[Highlighted in the editor: Retro Lead pattern 1: Add E4 at step 9 (4 steps); Kick 808 pattern 1: Turn off step 7]')
+  expect(body.history[1].content).not.toContain('<note-suggestions>')
+  expect(body.systemPrompt).toContain('<note-suggestions>')
+  expect((await reply()).suggestions).toBeUndefined()
+})
+
+test('malformed or cut-off suggestion blocks keep the answer and highlight nothing', async () => {
+  projectId = await trapProject()
+  fetchMock.mockImplementationOnce(async () => response('Try a minor key.\n<note-suggestions>{"items":[{"action":"add",'))
+  await send('Make it darker.')
+  await flush()
+  expect(await reply()).toMatchObject({ status: 'complete', content: 'Try a minor key.', suggestions: { items: [], skipped: 1 } })
+})

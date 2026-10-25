@@ -8,6 +8,8 @@ import { preloadPiano } from '../audio/sounds'
 import { channelSound, defaultHit, patternLength } from './patternAdapter'
 import { PatternLengthControl } from './PatternLengthControl'
 import type { PianoNotes, StepData, StudioChannel, StudioProject } from './types'
+import type { ResolvedSuggestion } from '../../convex/noteSuggestions'
+import { pianoGhosts } from '../assistant/noteCoach'
 
 type Props = {
   project: StudioProject
@@ -21,6 +23,8 @@ type Props = {
   /** Step within the pattern the playhead is on, or null when this pattern isn't playing. */
   playStep: number | null
   setPatternSteps: Dispatch<SetStateAction<Record<number, number> | undefined>>
+  /** AI note suggestions to highlight; only this channel and pattern's are drawn. */
+  suggestions?: ResolvedSuggestion[]
 }
 
 /** The default synth every channel starts with, listed first in the instrument picker. */
@@ -36,7 +40,7 @@ const NEW_CHANNEL_INSERT = 6
  */
 export function StudioPianoRoll({
   project, activePattern, selectedChannelId, onSelectChannel, setChannels, setPianoNotes, setStepData, preview, playStep,
-  setPatternSteps,
+  setPatternSteps, suggestions = [],
 }: Props) {
   const [mode, setMode] = useState<PianoRollMode>('notes')
   // Drums play from the channel rack, so only melodic channels get a piano roll.
@@ -171,6 +175,9 @@ export function StudioPianoRoll({
             >
               <span className="h-2 w-2 rounded-full" style={{ background: c.color }} />
               {c.name}
+              {suggestions.some((s) => s.status === 'pending' && s.channelId === c.id && s.pattern === activePattern) && (
+                <span title="Has AI suggestions" aria-label="has AI suggestions" className="text-[#ffd447]">✦</span>
+              )}
             </button>
           ))}
           <button
@@ -233,6 +240,7 @@ export function StudioPianoRoll({
         color={channel.color}
         onPreview={(pitch, velocity) => preview(channel.id, midiToName(pitch), velocity)}
         mode={mode}
+        ghosts={pianoGhosts(suggestions, activePattern, channel.id, notes)}
       />
     </div>
   )

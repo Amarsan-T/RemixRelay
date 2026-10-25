@@ -1,6 +1,23 @@
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
+/** Checked note suggestions from a reply (convex/noteSuggestions.ts). Steps are 0-based. */
+export const suggestionSet = v.object({
+  summary: v.optional(v.string()),
+  items: v.array(v.object({
+    action: v.union(v.literal('add'), v.literal('remove'), v.literal('change')),
+    channelId: v.string(),
+    channelName: v.string(),
+    pattern: v.number(),
+    step: v.number(),
+    note: v.optional(v.string()),
+    to: v.optional(v.string()),
+    length: v.optional(v.number()),
+    why: v.optional(v.string()),
+  })),
+  skipped: v.number(),
+})
+
 export default defineSchema({
   projects: defineTable({
     name: v.string(),
@@ -45,6 +62,8 @@ export default defineSchema({
     model: v.optional(v.string()),
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
+    /** Assistant replies: notes Claude suggested, highlighted in the editor on request. */
+    suggestions: v.optional(suggestionSet),
   })
     .index('by_project', ['projectId', 'createdAt'])
     .index('by_project_request', ['projectId', 'requestId'])

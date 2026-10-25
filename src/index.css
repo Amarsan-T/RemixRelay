@@ -304,9 +304,38 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   to { transform: translate3d(var(--drift-x, 12px), var(--drift-y, -24px), 0); }
 }
 
+/* AI coach highlights on Channel Rack pads: an outline around the pad, so lit
+   and unlit pads stay readable. Same colors as the piano roll's ghost notes. */
+.coach-pad {
+  position: absolute;
+  inset: -3px;
+  border-radius: 5px;
+  pointer-events: none;
+}
+.coach-pad.add { border: 2px dashed #ffd447; box-shadow: 0 0 8px rgba(255, 212, 71, 0.55); animation: coach-pulse 1.6s ease-in-out infinite; }
+.coach-pad.remove { border: 2px dashed #ff5a6e; box-shadow: 0 0 8px rgba(255, 90, 110, 0.5); }
+.coach-pad.change { border: 2px solid #ffd447; }
+.coach-pad::after {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  font: bold 10px/1 system-ui, sans-serif;
+  color: #1b1c24;
+}
+.coach-pad.add::after { content: '+'; background: #ffd447; }
+.coach-pad.remove::after { content: '\2212'; background: #ff5a6e; }
+.coach-pad.change::after { content: '\2195'; background: #ffd447; }
+@keyframes coach-pulse { 50% { box-shadow: 0 0 2px rgba(255, 212, 71, 0.2); } }
+
 /* Some people find motion or see-through surfaces hard to read: respect their settings. */
 @media (prefers-reduced-motion: reduce) {
   .aero-bubble { animation: none; }
+  .coach-pad.add { animation: none; }
 }
 /* Windows' "Transparency effects: off" turns this on. Only the see-through blur goes:
    the gradients and gloss stay, so it still looks like Aero, just opaque. */

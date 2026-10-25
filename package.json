@@ -14,7 +14,7 @@
     "test:sync": "node --test tests/sync.test.mjs",
     "test:deployment": "node --test tests/deployment.test.mjs",
     "test:assistant": "node --test tests/assistant.test.mjs",
-    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs tests/deployment.test.mjs tests/assistant.test.mjs && npm run test:chat:backend",
+    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs tests/deployment.test.mjs tests/assistant.test.mjs tests/note-suggestions.test.mjs && npm run test:chat:backend",
     "preview": "vite preview",
     "test:chat:backend": "vitest run",
     "test:chat:dev": "node tests/browser/chat-backend.mjs",
