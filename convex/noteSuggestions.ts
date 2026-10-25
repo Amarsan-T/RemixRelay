@@ -186,9 +186,13 @@ function draft(entry: Record<string, unknown>): DraftSuggestion[] | null {
   const pattern = position(entry.pattern, 1, MAX_PATTERNS)
   if (!action || !channel || pattern === null) return null
   const rawSteps = Array.isArray(entry.steps) ? entry.steps : entry.step !== undefined ? [entry.step] : []
+  // An entry can't list more steps than the reply may hold.
+  if (rawSteps.length > MAX_SUGGESTIONS) return null
   const steps = rawSteps.map((step) => position(step, 1, MAX_PATTERN_STEPS))
   if (!steps.length || steps.some((step) => step === null)) return null
   const rawNotes = Array.isArray(entry.notes) ? entry.notes : entry.note !== undefined && entry.note !== null ? [entry.note] : []
+  // The engine plays at most eight notes at once.
+  if (rawNotes.length > 8) return null
   const notes = rawNotes.filter((note): note is string => typeof note === 'string').map((note) => note.trim())
   if (notes.length !== rawNotes.length) return null
   const to = typeof entry.to === 'string' ? entry.to.trim() : undefined

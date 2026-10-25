@@ -69,6 +69,8 @@ test('malformed AI responses are handled without highlighting anything made up',
     { action: 'add', channel: '', pattern: 1, step: 3, note: 'E4' },
     { action: 'add', channel: 'Retro Lead', pattern: 99, step: 3, note: 'E4' },
     { action: 'add', channel: 'Re', pattern: 1, step: 3, note: 'E4' }, // too short to identify a channel
+    { action: 'add', channel: 'Kick 808', pattern: 1, steps: Array.from({ length: 33 }, (_, i) => i + 1) }, // more steps than a reply may hold
+    { action: 'add', channel: 'Retro Lead', pattern: 1, step: 3, notes: ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4', 'C5', 'D5'] }, // nine-note chord
     null, 'add E4',
   ]
   // Nothing made up survives to the stored suggestions.
