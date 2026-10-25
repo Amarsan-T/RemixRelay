@@ -30,6 +30,7 @@ const PIANO_SAMPLES = Object.fromEntries(
   ['A0', 'C1', 'D#1', 'F#1', 'A1', 'C2', 'D#2', 'F#2', 'A2', 'C3', 'D#3', 'F#3', 'A3', 'C4', 'D#4', 'F#4',
     'A4', 'C5', 'D#5', 'F#5', 'A5', 'C6', 'D#6', 'F#6', 'A6', 'C7'].map((note) => [note, `${note.replace('#', 's')}.mp3`]),
 )
+const PIANO_NOTE_COUNT = Object.keys(PIANO_SAMPLES).length
 const PIANO_URL = 'https://tonejs.github.io/audio/salamander/'
 
 // The engine rebuilds instruments on every Play, so the piano samples are
@@ -53,17 +54,35 @@ function loadPianoSamples(): Promise<void> {
   return pianoLoading
 }
 
-/** A sampled piano that stays silent, instead of throwing, until its samples are ready. */
-function createPiano(context: Tone.Context): Tone.Sampler {
-  const sampler = new Tone.Sampler({ context, release: 1, volume: 9, urls: Object.fromEntries(pianoBuffers) })
-  if (pianoBuffers.size < Object.keys(PIANO_SAMPLES).length) {
-    void loadPianoSamples()
-      .then(() => { if (!sampler.disposed) pianoBuffers.forEach((buffer, note) => sampler.add(note as Tone.Unit.Note, buffer)) })
-      .catch((error: unknown) => console.warn('Piano samples failed to load:', error))
+/** Whether a piano holds every sample yet. Until it does, it must not play. */
+export interface PianoLoad {
+  readonly ready: boolean
+}
+
+/**
+ * Gives a piano the full sample set once every sample is decoded, then marks
+ * it ready. Checking the shared cache isn't enough: it fills one sample at a
+ * time while this piano still holds none, and a Sampler with no buffers throws.
+ */
+export function loadPianoInto(piano: Pick<Tone.Sampler, 'add' | 'disposed'>): PianoLoad {
+  const load = { ready: false }
+  const fill = () => {
+    if (piano.disposed) return
+    pianoBuffers.forEach((buffer, note) => piano.add(note as Tone.Unit.Note, buffer))
+    load.ready = true
   }
+  if (pianoBuffers.size === PIANO_NOTE_COUNT) fill()
+  else void loadPianoSamples().then(fill).catch((error: unknown) => console.warn('Piano samples failed to load:', error))
+  return load
+}
+
+/** A sampled piano that stays silent, instead of throwing, until all its samples are ready. */
+function createPiano(context: Tone.Context): Tone.Sampler {
+  const sampler = new Tone.Sampler({ context, release: 1, volume: 9 })
+  const load = loadPianoInto(sampler)
   const play = sampler.triggerAttackRelease.bind(sampler)
   sampler.triggerAttackRelease = ((...args: Parameters<typeof play>) =>
-    sampler.loaded && pianoBuffers.size > 0 ? play(...args) : sampler) as typeof play
+    load.ready && sampler.loaded ? play(...args) : sampler) as typeof play
   return sampler
 }
 

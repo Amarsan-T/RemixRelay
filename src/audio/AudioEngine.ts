@@ -6,6 +6,28 @@ import { createMixBus } from './mixer'
 import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
+/**
+ * Plays one step on every track. Each instrument is isolated: one that throws
+ * (e.g. a sampler whose audio isn't ready) is reported and skipped, and the
+ * tracks after it still play.
+ */
+export function playTracksAtStep(
+  tracks: readonly Track[],
+  instruments: ReadonlyMap<string, Pick<TrackInstrument, 'playStep'>>,
+  step: number,
+  time: number,
+  stepSeconds: number,
+  onError: (trackId: string, error: unknown) => void,
+): void {
+  for (const track of tracks) {
+    try {
+      instruments.get(track.id)?.playStep(track, step, time, stepSeconds)
+    } catch (error) {
+      onError(track.id, error)
+    }
+  }
+}
+
 /** Framework-independent sequencer. Construction does not create an AudioContext. */
 export class AudioEngine {
   private pattern: MusicalPattern
@@ -23,6 +45,8 @@ export class AudioEngine {
   private generation = 0
   private startPromise: Promise<void> | null = null
   private finishTimer: ReturnType<typeof setTimeout> | null = null
+  /** Tracks that already logged a failed step this run, so a loop doesn't flood the console. */
+  private failedTracks = new Set<string>()
 
   constructor(pattern: MusicalPattern = createDemoPattern()) {
     validatePattern(pattern)
@@ -227,15 +251,18 @@ export class AudioEngine {
       const loopEnd = `0:0:${loopSteps}`
       transport.setLoopPoints(0, loopEnd)
       transport.loop = this.pattern.loop
+      this.failedTracks.clear()
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
         const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % loopSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
         const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
           track.pattern.closedHat.some((hit) => hit.step === step && hit.velocity !== 0))
-        for (const track of this.pattern.tracks) {
-          this.instruments.get(track.id)?.playStep(track, step, time, stepSeconds)
-        }
+        playTracksAtStep(this.pattern.tracks, this.instruments, step, time, stepSeconds, (id, error) => {
+          if (this.failedTracks.has(id)) return
+          this.failedTracks.add(id)
+          console.warn(`Audio track ${id} skipped a step:`, error)
+        })
         if (closedHat) {
           for (const instrument of this.instruments.values()) instrument.chokeOpenHat?.(time)
         }
