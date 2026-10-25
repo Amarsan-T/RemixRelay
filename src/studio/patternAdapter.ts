@@ -16,9 +16,12 @@ export function defaultHit(channel: StudioChannel): { pitch: string, durationSte
 /** Longest pattern, in steps (16 bars). */
 export const MAX_PATTERN_STEPS = 256
 
+/** Length of a pattern nobody has resized yet, in steps: 64 = four bars. */
+export const DEFAULT_PATTERN_STEPS = 64
+
 /** How many steps a pattern plays before it loops. 16 = one bar. */
 export function patternLength(project: StudioProject, pattern: number): number {
-  return project.patternSteps?.[pattern] ?? STEP_COUNT
+  return project.patternSteps?.[pattern] ?? DEFAULT_PATTERN_STEPS
 }
 
 const gainDb = (gain: number, headroom = 0) => Math.max(-60, Math.min(0, headroom + 20 * Math.log10(Math.max(gain, 0.001))))

@@ -221,6 +221,8 @@ test('channel and insert solo/mute combine, and zero volume is truly silent', ()
 
 test('mixer gain, pan, effects, master volume, and metronome reach the pattern', () => {
   const project = createStudioProject()
+  // A one-bar pattern, so the metronome clicks on 4 beats.
+  project.patternSteps = { 1: 16 }
   project.channels[0].pan = -0.5
   project.mixerTracks[1].pan = -0.75
   project.mixerTracks[1].filter = 1500
@@ -310,6 +312,8 @@ test('changing the bar count of a stopped engine just replaces the pattern', () 
 
 test('SONG mode places each playlist clip on its bar and merges overlapping patterns', () => {
   const project = createStudioProject()
+  // One-bar patterns, so each clip fills exactly the bar it sits on.
+  project.patternSteps = { 1: 16, 2: 16 }
   // Pattern 1 (Trap Heat) on bars 1 and 3; pattern 2 gets one kick, stacked on bar 3.
   project.stepData[2].kick[8] = 1
   project.song = {
@@ -383,6 +387,15 @@ test('long patterns span several playlist bars and stop at the end of the song',
   assert.equal(patternStepAt(project, 2, 20), 20)
   assert.equal(patternStepAt(project, 2, 40), null, 'Bars 3-7 have no clip of pattern 2')
   assert.equal(patternStepAt(project, 2, 115), 3)
+})
+
+test('patterns nobody has resized default to DEFAULT_PATTERN_STEPS', async () => {
+  const { DEFAULT_PATTERN_STEPS, patternLength } = await import('../src/studio/patternAdapter.ts')
+  const project = createStudioProject()
+  assert.equal(patternLength(project, 1), DEFAULT_PATTERN_STEPS)
+  const pattern = toAudioPattern(project, 1)
+  validatePattern(pattern)
+  assert.equal(pattern.bars ?? 1, DEFAULT_PATTERN_STEPS / 16)
 })
 
 test('a piano only plays once it holds every sample, and retries after a failed download', async () => {
