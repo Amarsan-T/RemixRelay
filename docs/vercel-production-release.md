@@ -1,5 +1,7 @@
 # Frontend deployment fix and final release
 
+**Python-service release:** use [the current Python architecture and rollout guide](python-ai-service.md). The direct-Convex-provider/frontend-only instructions below are historical.
+
 This is the current release guide; it supersedes the historical import/build
 notes in `vercel-ui-setup.md`. Do not deploy until the owner approves publication.
 

@@ -1,0 +1,4 @@
+# Runtime dependencies for the single authenticated /api/ai Python Function.
+fastapi==0.154.0
+httpx==0.28.1
+pydantic==2.14.1

@@ -1,5 +1,7 @@
 # Vercel UI setup: stop before Deploy
 
+**Python-service release:** use [the current Python architecture and rollout guide](python-ai-service.md). The direct-Convex-provider/frontend-only instructions below are historical.
+
 **Historical setup notes:** use [the current production release guide](vercel-production-release.md)
 for the merged Claude chat application and final frontend deployment fix.
 

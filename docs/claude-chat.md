@@ -119,3 +119,7 @@ approved and merged, the release still needs these separate steps:
    disabled. Then perform the approved hosted chat, persistence, collaboration,
    and audio smoke checks. A first visit to an empty Production database seeds
    the shipped demo projects, so include that data write in release approval.
+
+## Python service architecture
+
+The Python-service branch replaces the direct Node Anthropic call with the authenticated gateway described in [python-ai-service.md](python-ai-service.md). For that release, Anthropic credentials/model/workspace belong on Vercel; Convex uses AI_SERVICE_URL and AI_SERVICE_TOKEN. The earlier direct-provider setup above is historical. Chat mutations, persistence and safeguards remain.

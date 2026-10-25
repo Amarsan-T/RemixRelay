@@ -38,7 +38,7 @@ const startup=new Promise((resolve,reject)=>{
 try{
   await startup
   console.log('Testing only anonymous Convex at http://127.0.0.1:'+cloudPort)
-  const runner=spawn(process.execPath,[join(root,'node_modules/@playwright/test/cli.js'),'test',...process.argv.slice(2)],{cwd:root,env:{...process.env,REMIXRELAY_E2E_CONVEX_URL:'http://127.0.0.1:'+cloudPort},stdio:'inherit'})
+  const runner=spawn(process.execPath,[join(root,'node_modules/@playwright/test/cli.js'),'test',...process.argv.slice(2)],{cwd:root,env:{...process.env,REMIXRELAY_E2E_FIXTURE:fixture,REMIXRELAY_E2E_CONVEX_URL:'http://127.0.0.1:'+cloudPort},stdio:'inherit'})
   process.exitCode=await new Promise((resolve,reject)=>{runner.once('error',reject);runner.once('exit',code=>resolve(code??1))})
 }finally{
   if(process.platform==='win32')spawnSync('taskkill',['/PID',String(backend.pid),'/T','/F'],{stdio:'ignore',windowsHide:true})

@@ -114,10 +114,15 @@ test('the Anthropic key and SDK stay on the server', () => {
     const code = readFileSync(file, 'utf8')
     assert.doesNotMatch(code, /@anthropic-ai\/sdk|ANTHROPIC_API_KEY|VITE_ANTHROPIC/, `${relative(root, file)} must not touch the Claude key or SDK`)
   }
-  // Only Node actions in convex/ call Claude, and they read the key from the deployment's environment.
-  const callers = sources(join(root, 'convex')).filter((file) => readFileSync(file, 'utf8').includes('@anthropic-ai/sdk'))
-  assert.deepEqual(callers.map((file) => relative(root, file).replaceAll('\\', '/')), ['convex/chatAgent.ts'])
-  assert.match(readFileSync(callers[0], 'utf8'), /^'use node'/)
+  // Python is now the sole provider caller. Convex only authenticates to it.
+  for (const file of sources(join(root, 'convex'))) {
+    assert.doesNotMatch(readFileSync(file, 'utf8'), /@anthropic-ai\/sdk|api\.anthropic\.com|ANTHROPIC_API_KEY/, relative(root, file))
+  }
+  const gateway = readFileSync(join(root, 'api/ai.py'), 'utf8')
+  assert.match(gateway, /https:\/\/api\.anthropic\.com\/v1\/messages/)
+  assert.match(gateway, /os\.environ\.get\("ANTHROPIC_API_KEY"/)
+  assert.match(gateway, /hmac\.compare_digest/)
+  for (const file of browser) assert.doesNotMatch(readFileSync(file, 'utf8'), /AI_SERVICE_TOKEN|AI_SERVICE_VERCEL_BYPASS/)
   for (const file of sources(join(root, 'convex'))) {
     assert.doesNotMatch(readFileSync(file, 'utf8'), /sk-ant-[A-Za-z0-9]/, `${relative(root, file)} contains something that looks like a key`)
   }

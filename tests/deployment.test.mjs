@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { test } from 'node:test'
 import { deploymentEnvironment } from '../scripts/deployment-env.mjs'
 
@@ -131,7 +131,9 @@ test('Vercel uses the guarded build and leaves automatic Git publishing disabled
   assert.equal(config.installCommand, 'npm ci')
   assert.equal(config.builds, undefined, 'legacy builders must not bypass the frontend build')
   assert.equal(config.routes, undefined, 'no catch-all Python routing')
-  assert.equal(config.functions, undefined, 'Convex is the only active backend')
+  assert.deepEqual(Object.keys(config.functions), ['api/ai.py'], 'Only the authenticated Python gateway is active')
+  assert.equal(config.functions['api/ai.py'].maxDuration, 90)
+  assert.match(config.functions['api/ai.py'].excludeFiles, /experiments/ )
   assert.deepEqual(config.rewrites, [{ source: '/((?!api(?:/|$)|assets(?:/|$)).*)', destination: '/index.html' }])
 })
 
@@ -148,12 +150,16 @@ test('SPA fallback covers navigation but cannot swallow API or missing asset req
 })
 
 test('Python experiments and dependencies cannot be auto-discovered as Vercel functions', () => {
-  for (const path of ['api', 'requirements.txt', 'pyproject.toml', 'main.py', 'app.py']) {
+  for (const path of ['pyproject.toml', 'main.py', 'app.py', 'api/main.py', 'api/startInquiry.py', 'api/aiAssist.py']) {
     assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), false, path)
   }
   for (const path of ['main.py', 'claude_reader.py', 'requirements.txt']) {
-    assert.equal(existsSync(new URL(`../experiments/python-api/${path}`, import.meta.url)), true, path)
+    assert.equal(existsSync(new URL(`../backend/${path}`, import.meta.url)), true, path)
   }
+  assert.deepEqual(readdirSync(new URL('../api/', import.meta.url)).filter(name => name.endsWith('.py')), ['ai.py'])
+  const requirements = readFileSync(new URL('../requirements.txt', import.meta.url), 'utf8')
+  assert.match(requirements, /fastapi==/)
+  assert.doesNotMatch(requirements, /^(json|os|textwrap|dotenv)$/m)
   const ignored = readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').split(/\r?\n/)
   assert.ok(ignored.includes('/experiments/'))
   assert.ok(ignored.includes('/backend/'))
