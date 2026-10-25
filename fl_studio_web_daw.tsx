@@ -7,7 +7,7 @@ import { MAX_BPM, MIN_BPM } from './src/audio';
 import { PRESETS } from './src/studio/data';
 import { useStudioProject } from './src/studio/useStudioProject';
 import { useStudioAudio, type PlayMode } from './src/studio/useStudioAudio';
-import { patternLength, patternStepAt } from './src/studio/patternAdapter';
+import { MAX_PATTERNS, patternLength, patternNumbers, patternStepAt } from './src/studio/patternAdapter';
 import { PatternLengthControl } from './src/studio/PatternLengthControl';
 import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
 import { StudioPlaylist } from './src/studio/StudioPlaylist';
@@ -27,7 +27,7 @@ type StudioProps = {
 export default function App({ initialProject, projectName, onProjectChange, onHome }: StudioProps) {
   const {
     project, setBpm, setLoop, setMetronome, setChannels,
-    setStepData, setPianoNotes, setMixerTracks, setSong, setPatternSteps,
+    setStepData, setPianoNotes, setMixerTracks, setSong, setPatternSteps, setPatternCount,
   } = useStudioProject(initialProject);
 
   // Report edits upward. The callback sits in a ref so a new function from the
@@ -53,6 +53,13 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   const stepInBar = currentStep % 16;
   // Patterns can be any number of steps long (16 = one bar).
   const patternSteps = patternLength(project, activePattern);
+  const patterns = patternNumbers(project);
+  /** Adds an empty pattern after the last one and selects it. */
+  const addPattern = () => {
+    const next = patterns.length + 1;
+    setPatternCount(next);
+    setActivePattern(next);
+  };
   // Where the pattern on screen is up to, or null when you aren't hearing it.
   const patternPlayStep = !isPlaying ? null
     : playMode === 'pattern' ? currentStep : patternStepAt(project, activePattern, currentStep);
@@ -281,14 +288,14 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
           </div>
 
           {/* Pattern Selector */}
-          <div className="flex items-center gap-1 bg-zinc-900/90 px-2 py-1 rounded border border-zinc-700/80">
-            <Layers className="w-3.5 h-3.5 text-orange-400" />
+          <div className="flex items-center gap-1 bg-zinc-900/90 px-2 py-1 rounded border border-zinc-700/80 max-w-72 overflow-x-auto">
+            <Layers className="w-3.5 h-3.5 text-orange-400 shrink-0" />
             <span className="text-xs text-zinc-400 font-mono">PAT:</span>
-            {[1, 2, 3, 4].map(num => (
+            {patterns.map(num => (
               <button
                 key={num}
                 onClick={() => setActivePattern(num)}
-                className={`w-5 h-5 text-xs font-mono font-bold rounded flex items-center justify-center transition-all ${
+                className={`min-w-5 h-5 px-0.5 shrink-0 text-xs font-mono font-bold rounded flex items-center justify-center transition-all ${
                   activePattern === num
                     ? 'bg-orange-500 text-zinc-950 shadow'
                     : 'text-zinc-400 hover:bg-zinc-800'
@@ -297,6 +304,16 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                 {num}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={addPattern}
+              disabled={patterns.length >= MAX_PATTERNS}
+              aria-label="New pattern"
+              title="Add a pattern"
+              className="w-5 h-5 shrink-0 text-xs font-mono font-bold rounded flex items-center justify-center text-zinc-400 hover:bg-zinc-800 hover:text-orange-400 border border-dashed border-zinc-700"
+            >
+              +
+            </button>
           </div>
         </div>
 
@@ -717,6 +734,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             setSong={setSong}
             activePattern={activePattern}
             onSelectPattern={setActivePattern}
+            onNewPattern={addPattern}
             onOpenPattern={(pattern) => { setActivePattern(pattern); setActiveTab('channelRack'); }}
             playStep={playMode === 'song' && isPlaying ? currentStep : null}
           />

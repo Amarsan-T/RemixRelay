@@ -465,3 +465,23 @@ test('an instrument that fails on a step does not stop the tracks after it', asy
   assert.deepEqual(played, ['drums@4', 'melody@4', 'chords@4'])
   assert.deepEqual(errors, [['bass', 'No available buffers for note: 36']])
 })
+
+test('projects can have more than four patterns, and new ones play in PAT and SONG mode', async () => {
+  const { patternNumbers, patternColor } = await import('../src/studio/patternAdapter.ts')
+  const project = createStudioProject()
+  assert.deepEqual(patternNumbers(project), [1, 2, 3, 4])
+  project.patternCount = 6
+  assert.deepEqual(patternNumbers(project), [1, 2, 3, 4, 5, 6])
+  assert.equal(patternColor(9), patternColor(1), 'Colors repeat after eight patterns')
+  // Pattern 6 has never been touched: no step or note data exists for it yet.
+  const empty = toAudioPattern(project, 6)
+  validatePattern(empty)
+  assert.ok(empty.tracks.every((t) => (t.type === 'drums' ? Object.values(t.pattern).flat() : t.steps).length === 0))
+  // Give it a kick and place it on bar 2 of the song.
+  project.stepData[6] = { kick: [1] }
+  project.patternSteps = { 1: 16, 6: 16 }
+  project.song = { bars: 2, trackCount: 1, clips: [{ id: 'x', patternId: '6', track: 0, startBar: 1 }] }
+  const song = toAudioSong(project)
+  validatePattern(song)
+  assert.deepEqual(song.tracks.find((t) => t.id === 'kick').pattern.kick.map((h) => h.step), [16])
+})
