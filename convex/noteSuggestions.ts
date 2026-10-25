@@ -111,6 +111,8 @@ export function extractSuggestionBlock(reply: string): { text: string; block: st
     block = rest.slice(afterOpen, afterOpen + end)
     rest = rest.slice(afterOpen + end + rest.slice(afterOpen + end).match(close)![0].length)
   }
+  // A closing tag whose opening tag is missing is never shown.
+  text = text.replace(/<\/?note[-_ ]suggestions>/gi, '')
   // A fenced block labelled as suggestions (```note-suggestions ... ```) counts too.
   if (!found) {
     const fenced = /```[ \t]*note[-_ ]suggestions[ \t]*\n([\s\S]*?)```/i
@@ -121,9 +123,84 @@ export function extractSuggestionBlock(reply: string): { text: string; block: st
       text = text.replace(fenced, '')
     }
   }
+  // Suggestions written without any tag (in a ```json fence, or bare) are still suggestions,
+  // and raw JSON is never shown to people.
+  if (!found) {
+    const untagged = findUntaggedSuggestions(text)
+    if (untagged) {
+      found = true
+      block = untagged.json
+      text = text.slice(0, untagged.start) + text.slice(untagged.end)
+    }
+  }
   // Claude sometimes wraps the block in a code fence; remove the empty fence it leaves.
   text = text.replace(/```[a-z]*\s*```/gi, '').replace(/\n{3,}/g, '\n\n').trim()
   return { text, block, found }
+}
+
+/** Does this parsed JSON look like a suggestion block (items with actions)? */
+function looksLikeSuggestions(data: unknown): boolean {
+  const list = Array.isArray(data) ? data : isRecord(data) ? data.items : undefined
+  return Array.isArray(list) && list.length > 0 && list.every((item) => isRecord(item) && 'action' in item)
+}
+
+/**
+ * The first JSON object or array in the text that parses and looks like a
+ * suggestion block, with its span (including a surrounding code fence).
+ */
+function findUntaggedSuggestions(text: string): { json: string; start: number; end: number } | null {
+  // Bounded work even for a reply full of brackets.
+  let tries = 0
+  for (let start = 0; start < text.length; start++) {
+    const opener = text[start]
+    if (opener !== '{' && opener !== '[') continue
+    if (++tries > 40) return null
+    const end = matchingBracket(text, start)
+    if (end < 0) continue
+    const json = text.slice(start, end + 1)
+    let data: unknown
+    try { data = JSON.parse(json) } catch { continue }
+    if (!looksLikeSuggestions(data)) { start = end; continue }
+    // Remove a code fence around it too.
+    const before = /```[a-z]*\s*$/i.exec(text.slice(0, start))
+    const after = /^\s*```/.exec(text.slice(end + 1))
+    return before && after
+      ? { json, start: start - before[0].length, end: end + 1 + after[0].length }
+      : { json, start, end: end + 1 }
+  }
+  return null
+}
+
+/** Index of the bracket closing the one at `start`, skipping strings; -1 if unbalanced. */
+function matchingBracket(text: string, start: number): number {
+  let depth = 0
+  let inString = false
+  for (let index = start; index < text.length; index++) {
+    const char = text[index]
+    if (inString) {
+      if (char === '\\') index++
+      else if (char === '"') inString = false
+    } else if (char === '"') inString = true
+    else if (char === '{' || char === '[') depth++
+    else if (char === '}' || char === ']') { if (--depth === 0) return index }
+  }
+  return -1
+}
+
+/**
+ * The chat shows plain text. Markdown headings and bold/italic markers would
+ * appear as literal symbols, so they are removed and blank runs collapsed;
+ * "-" bullets and line breaks stay.
+ */
+export function tidyReplyText(text: string): string {
+  return text
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    .replace(/\*\*([^*\n]+)\*\*/g, '$1')
+    .replace(/__([^_\n]+)__/g, '$1')
+    .replace(/^[ \t]*\* /gm, '- ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -348,7 +425,9 @@ export function suggestionsFromBlock(block: string, project: SuggestionProject):
 
 /** Splits a raw reply into readable text and checked suggestions (null when Claude sent none). */
 export function readReply(reply: string, project: SuggestionProject): { text: string; suggestions: SuggestionSet | null } {
-  const { text, block, found } = extractSuggestionBlock(reply)
+  const extracted = extractSuggestionBlock(reply)
+  const { block, found } = extracted
+  const text = tidyReplyText(extracted.text)
   if (!found) return { text, suggestions: null }
   const suggestions = block === null ? { items: [], skipped: 1 } : suggestionsFromBlock(block, project)
   // Never fall back to the raw block: a reply that was only a block still gets a sentence.
