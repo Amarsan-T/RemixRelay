@@ -82,7 +82,7 @@ function SyncedApp() {
       }}
       onDeleteProject={async entry => {
         // Permanent: the server deletes the project and its chat. The key has nothing left to manage.
-        await remove({ id: entry.id as Id<'projects'>, key: credentialFor(entry.id)?.key ?? '' })
+        await remove({ id: entry.id as Id<'projects'>, key: credentialFor(entry.id)?.key ?? '', permanent: true })
         forgetCredential(entry.id)
       }}
       // Only projects soft-deleted before permanent deletion existed can still be restored.

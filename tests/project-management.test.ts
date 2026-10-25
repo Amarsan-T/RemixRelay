@@ -8,17 +8,18 @@ const modules = import.meta.glob('../convex/**/*.ts')
 const key = 'a1'.repeat(32)
 const otherKey = 'b2'.repeat(32)
 const music = { bpm: 97, stepData: { 1: { kick: [1, 0, 1] } }, pianoNotes: { 1: { synth: [{ pitch: 'C4', step: 2 }] } } }
-let t: ReturnType<typeof convexTest>
+const createTest = () => convexTest(schema, modules)
+let t: ReturnType<typeof createTest>
 let id: Awaited<ReturnType<typeof create>>
 const create = async (managed = true) => t.mutation(api.projects.create, {
   name: 'Test song', color: '#22d3ee', data: music, ...(managed ? { managementKeyHash: await keyHash(key) } : {}),
 })
 const raw = () => t.run(ctx => ctx.db.get(id))
 const get = () => t.query(api.projects.get, { id })
-const remove = (projectId = id) => t.mutation(api.projects.remove, { id: projectId, key })
+const remove = (projectId = id) => t.mutation(api.projects.remove, { id: projectId, key, permanent: true })
 const messagesOf = (projectId: typeof id) => t.run(ctx => ctx.db.query('chatMessages').withIndex('by_project', q => q.eq('projectId', projectId)).collect())
 const attemptsOf = (projectId: typeof id) => t.run(ctx => ctx.db.query('chatAttempts').withIndex('by_project_started', q => q.eq('projectId', projectId)).collect())
-const ask = (projectId: typeof id, content = 'Question', requestId = crypto.randomUUID()) => t.mutation(api.chat.send, { projectId, content, requestId })
+const ask = (projectId: typeof id, content = 'Question', requestId: string = crypto.randomUUID()) => t.mutation(api.chat.send, { projectId, content, requestId })
 /** A project soft-deleted by the earlier delete-with-undo flow. */
 const legacyTombstone = async () => t.run(async ctx => ctx.db.insert('projects', {
   name: 'Old deleted song', color: 'red', data: music, version: 3, updatedAt: Date.now(),
@@ -31,7 +32,7 @@ beforeEach(async () => {
   vi.stubEnv('AI_SERVICE_URL', '')
   vi.stubEnv('AI_SERVICE_TOKEN', '')
   vi.stubGlobal('fetch', vi.fn(() => { throw new Error('No network permitted in project-management tests') }))
-  t = convexTest(schema, modules)
+  t = createTest()
   id = await create()
 })
 afterEach(async () => {
@@ -53,7 +54,7 @@ test('management requires the secret, not a share ID or the stored hash', async 
   const before = await raw()
   for (const badKey of ['', id, otherKey, before!.managementKeyHash!]) {
     await expect(t.mutation(api.projects.rename, { id, key: badKey, name: 'Stolen', expectedName: 'Test song' })).rejects.toThrow('Management access')
-    await expect(t.mutation(api.projects.remove, { id, key: badKey, expectedName: 'Test song', expectedVersion: 1, expectedLifecycle: 0 })).rejects.toThrow('Management access')
+    await expect(t.mutation(api.projects.remove, { id, key: badKey, permanent: true })).rejects.toThrow('Management access')
   }
   expect(await raw()).toEqual(before)
 })
@@ -141,14 +142,26 @@ test('large chat histories are deleted in bounded batches', async () => {
 
 test('only the manager can delete; a repeated delete is a harmless no-op', async () => {
   const before = await raw()
-  for (const badKey of ['', id, otherKey]) await expect(t.mutation(api.projects.remove, { id, key: badKey })).rejects.toThrow('Management access')
+  for (const badKey of ['', id, otherKey]) await expect(t.mutation(api.projects.remove, { id, key: badKey, permanent: true })).rejects.toThrow('Management access')
   expect(await raw()).toEqual(before)
-  // Browsers still running the confirm-and-undo version send stale extra arguments; deletion still works.
-  await t.mutation(api.projects.remove, { id, key, expectedName: 'Old title', expectedVersion: 99, expectedLifecycle: 0 })
+  await remove()
   expect(await raw()).toBeNull()
   await remove()
-  await t.mutation(api.projects.remove, { id, key: otherKey })
+  await t.mutation(api.projects.remove, { id, key: otherKey, permanent: true })
   expect(await t.query(api.projects.hasAny, {})).toBe(true)
+})
+
+test('an outdated page that still promises Undo can never delete; it is told to update', async () => {
+  await ask(id, 'Keep me')
+  await t.finishAllScheduledFunctions(vi.runAllTimers)
+  const before = { project: await raw(), messages: await messagesOf(id), attempts: await attemptsOf(id) }
+  // Exactly what the confirm-and-undo version sends: the current name, version and lifecycle, owner's key.
+  const legacy = { id, key, expectedName: before.project!.name, expectedVersion: before.project!.version, expectedLifecycle: 0 }
+  await expect(t.mutation(api.projects.remove, legacy)).rejects.toThrow('Refresh RemixRelay')
+  await expect(t.mutation(api.projects.remove, { id, key })).rejects.toThrow('Nothing was deleted')
+  await t.finishAllScheduledFunctions(vi.runAllTimers)
+  expect({ project: await raw(), messages: await messagesOf(id), attempts: await attemptsOf(id) }).toEqual(before)
+  expect(await t.run(ctx => ctx.db.query('appState').collect())).toEqual([])
 })
 
 test('a deleted project rejects queued saves, chat sends, retries and late AI results', async () => {

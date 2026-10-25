@@ -65,16 +65,21 @@ export const rename = mutation({
 /**
  * Permanently deletes a project the caller manages: the project (its music)
  * at once, then its chat. There is no undo. Every open session sees the
- * project disappear through its subscription. The expected* arguments from
- * the earlier confirm-and-undo flow are accepted and ignored, so browsers
- * still running that version keep working.
+ * project disappear through its subscription.
+ *
+ * Callers must send `permanent: true`. Browsers still running the earlier
+ * confirm-and-undo version send `expected*` arguments instead and promise the
+ * user an Undo; their requests are refused with an update-required message,
+ * so an outdated page can never permanently delete a project. Those arguments
+ * stay declared so the refusal is a clear message, not a validation error.
  */
 export const remove = mutation({
   args: {
-    id: v.id('projects'), key: v.string(),
+    id: v.id('projects'), key: v.string(), permanent: v.optional(v.literal(true)),
     expectedName: v.optional(v.string()), expectedVersion: v.optional(v.number()), expectedLifecycle: v.optional(v.number()),
   },
-  handler: async (ctx, { id, key }) => {
+  handler: async (ctx, { id, key, permanent }) => {
+    if (permanent !== true) throw new ConvexError(OUTDATED_DELETE)
     const project = await ctx.db.get(id)
     // Already gone (a double click or a retried request): nothing left to delete or reveal.
     if (project === null) return
@@ -88,6 +93,8 @@ export const remove = mutation({
     await purgeRecords(ctx, id)
   },
 })
+
+export const OUTDATED_DELETE = 'Deleting is now permanent. Refresh RemixRelay to update this page, then delete the project again. Nothing was deleted.'
 
 /** Chat records removed per transaction; the rest continue in a scheduled job. */
 const PURGE_BATCH = 200

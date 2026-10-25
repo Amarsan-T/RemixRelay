@@ -43,7 +43,7 @@ test.beforeEach(async ({ page }, info) => {
 test('an empty cloud dashboard after deleting the only project does not seed or hang', async ({ page }, info) => {
   const db = client(), key = randomBytes(32).toString('hex')
   const id = await db.mutation(anyApi.projects.create, { name: 'Only project', color: '#22d3ee', data: { bpm: 97, channels: [], stepData: {}, pianoNotes: {} }, managementKeyHash: createHash('sha256').update(key).digest('hex') })
-  await db.mutation(anyApi.projects.remove, { id, key })
+  await db.mutation(anyApi.projects.remove, { id, key, permanent: true })
   await page.goto(info.config.metadata.syncOrigin)
   await expect(page.getByText('No projects yet. Start one with New project.')).toBeVisible()
   await page.reload()
@@ -93,7 +93,10 @@ test('rename updates a collaborator without changing music; share links confer n
     await card(peer, id).getByRole('button', { name: /^Project actions/ }).click()
     await expect(peer.getByRole('menuitem', { name: 'Delete', exact: true })).toBeDisabled()
     await expect(peer.getByRole('menuitem', { name: 'Rename', exact: true })).toBeDisabled()
-    await expect(db.mutation(anyApi.projects.remove, { id, key: 'f'.repeat(64), expectedName: after.name, expectedVersion: after.version, expectedLifecycle: 0 })).rejects.toThrow('Management access')
+    await expect(db.mutation(anyApi.projects.remove, { id, key: 'f'.repeat(64), permanent: true })).rejects.toThrow('Management access')
+    // An outdated page (confirm-and-undo version) is refused even with the owner's key: nothing is deleted.
+    await expect(db.mutation(anyApi.projects.remove, { id, key, expectedName: after.name, expectedVersion: after.version, expectedLifecycle: 0 })).rejects.toThrow('Refresh RemixRelay')
+    expect(await db.query(anyApi.projects.get, { id })).toEqual(after)
     await page.reload()
     await expect(card(page, id)).toContainText('Shared renamed song')
   } finally { await second.close() }
