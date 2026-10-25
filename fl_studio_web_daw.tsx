@@ -535,12 +535,12 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                   <div
                     key={channel.id}
                     onClick={() => setSelectedChannelId(channel.id)}
-                    className={`flex items-center px-3 py-1.5 transition-colors ${
+                    className={`flex items-center px-3 transition-colors ${
                       isSelected ? 'bg-sky-400/10' : 'hover:bg-white/5'
                     }`}
                   >
                     {/* Left: Channel Controls (Pan, Vol, Mute, Solo) */}
-                    <div className="studio-channel-controls flex items-center self-stretch gap-2 w-72 shrink-0 sm:sticky sm:left-0 z-10">
+                    <div className="studio-channel-controls flex items-center self-stretch gap-2 w-72 shrink-0 py-1.5 sm:sticky sm:left-0 z-10">
                       {/* Selection LED */}
                       <div className={`w-1.5 h-6 rounded-full transition-all ${
                         isSelected ? 'bg-aero-glow shadow-[0_0_8px_#7fe3ff]' : 'bg-transparent'
@@ -626,7 +626,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                     </div>
 
                     {/* Right: Step Sequencer Pads (FL 4-beat color grouping) */}
-                    <div className="flex items-center gap-1 pl-4 flex-1">
+                    <div className="flex items-center gap-1 py-1.5 pl-4 flex-1">
                       {Array.from({ length: patternSteps }).map((_, stepIdx) => {
                         const isStepActive = currentPatternSteps[stepIdx] === 1 || (channel.type !== 'drum' &&
                           (pianoNotes[activePattern]?.[channel.id]?.some(note => note.step === stepIdx) ?? false));
