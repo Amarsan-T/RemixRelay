@@ -402,14 +402,38 @@ test('a reply with note suggestions stores checked suggestions and hides the blo
   expect(saved.version).toBe(1)
   expect(saved.data.stepData[1].kick[6]).toBe(1)
 
-  // The follow-up request reminds Claude what it highlighted, without the raw block.
+  // The follow-up shows Claude its earlier reply with the block in the same format, first, as checked.
   await send('Why that note?')
   await flush()
   const body = JSON.parse(fetchMock.mock.calls.at(-1)![1].body)
-  expect(body.history[1].content).toContain('[Highlighted in the editor: Retro Lead pattern 1: Add E4 at step 9 (4 steps); Kick 808 pattern 1: Turn off step 7]')
-  expect(body.history[1].content).not.toContain('<note-suggestions>')
-  expect(body.systemPrompt).toContain('<note-suggestions>')
+  expect(body.history[1].content).toBe('<note-suggestions>{"summary":"Dreamier lead","items":[' +
+    '{"action":"add","channel":"Retro Lead","pattern":1,"step":9,"note":"E4","length":4},' +
+    '{"action":"remove","channel":"Kick 808","pattern":1,"step":7}]}</note-suggestions>\nA long E4 makes it dreamier.')
+  expect(body.history[1].content).not.toContain('Ghost Synth')
+  expect(body.systemPrompt).toContain('REQUIRED whenever your answer involves specific notes or steps')
   expect((await reply()).suggestions).toBeUndefined()
+})
+
+test('a "make me a beat" reply written the natural way becomes applicable suggestions', async () => {
+  projectId = await trapProject()
+  // Block first, alternate tag spelling, several steps per item, a drum note, a short channel name, a chord.
+  fetchMock.mockImplementationOnce(async () => response('<note_suggestions>' + JSON.stringify({ summary: 'House groove', items: [
+    { action: 'add', channel: 'Kick', pattern: 2, steps: [1, 5, 9, 13], note: 'C1', why: 'Four on the floor' },
+    { action: 'add', channel: 'Clap Crisp', pattern: 2, steps: [5, 13] },
+    { action: 'add', channel: 'retro lead', pattern: 2, step: 1, notes: ['C4', 'E4', 'G4'], length: 8 },
+  ] }) + '</note_suggestions>\nA classic house groove: kick on every beat, claps on 2 and 4, and a C major chord.'))
+  await send('Make me a house beat in pattern 2')
+  await flush()
+  const answer = await reply()
+  expect(answer.content).toBe('A classic house groove: kick on every beat, claps on 2 and 4, and a C major chord.')
+  expect(answer.suggestions!.skipped).toBe(0)
+  expect(answer.suggestions!.items.map((item) => `${item.channelId}@${item.step}${item.note ? ':' + item.note : ''}`)).toEqual([
+    'kick@0', 'kick@4', 'kick@8', 'kick@12', 'clap@4', 'clap@12', 'synth_lead@0:C4', 'synth_lead@0:E4', 'synth_lead@0:G4',
+  ])
+  // Nothing was applied: the project is unchanged until the user presses Apply.
+  const saved = (await t.query(api.projects.get, { id: projectId }))!
+  expect(saved.version).toBe(1)
+  expect(saved.data.stepData[2].kick.every((gate: number) => gate === 0)).toBe(true)
 })
 
 test('malformed or cut-off suggestion blocks keep the answer and highlight nothing', async () => {

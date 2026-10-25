@@ -20,7 +20,7 @@ registerHooks({
 
 const {
   applySuggestion, applySuggestions, describeSuggestion, extractSuggestionBlock, parseSuggestionBlock,
-  readReply, resolveSuggestions, suggestionsFromBlock, suggestionsMemo, MAX_SUGGESTIONS,
+  readReply, resolveSuggestions, suggestionsFromBlock, suggestionsForHistory, MAX_SUGGESTIONS,
 } = await import('../convex/noteSuggestions.ts')
 const { SYSTEM_PROMPT } = await import('../convex/assistantPrompt.ts')
 const { pianoGhosts, rackHighlights, isInView, viewFor } = await import('../src/assistant/noteCoach.ts')
@@ -60,19 +60,21 @@ test('malformed AI responses are handled without highlighting anything made up',
     { action: 'paint', channel: 'Retro Lead', pattern: 1, step: 1, note: 'E4' }, // unknown action
     { action: 'add', channel: 'Retro Lead', pattern: 1, step: 0, note: 'E4' }, // steps are 1-based
     { action: 'add', channel: 'Retro Lead', pattern: 1, step: 2.5, note: 'E4' },
-    { action: 'add', channel: 'Retro Lead', pattern: 1, step: '3', note: 'E4' },
+    { action: 'add', channel: 'Retro Lead', pattern: 1, step: 'three', note: 'E4' },
+    { action: 'add', channel: 'Retro Lead', pattern: 1, steps: [3, 0], note: 'E4' }, // one bad step rejects the entry
     { action: 'add', channel: 'Retro Lead', pattern: 1, step: 3, note: 'H4' },
     { action: 'add', channel: 'Retro Lead', pattern: 1, step: 3, note: 'C7' }, // above the piano roll
     { action: 'add', channel: 'Retro Lead', pattern: 1, step: 3, note: 'B1' }, // below the piano roll
-    { action: 'add', channel: 'Retro Lead', pattern: 1, step: 3, note: 'E4', length: 40 },
     { action: 'change', channel: 'Retro Lead', pattern: 1, step: 1, note: 'A4' }, // no target pitch
     { action: 'add', channel: '', pattern: 1, step: 3, note: 'E4' },
     { action: 'add', channel: 'Retro Lead', pattern: 99, step: 3, note: 'E4' },
+    { action: 'add', channel: 'Re', pattern: 1, step: 3, note: 'E4' }, // too short to identify a channel
     null, 'add E4',
   ]
-  const parsed = parseSuggestionBlock(block(bad))
-  assert.deepEqual(parsed.items, [])
-  assert.equal(parsed.skipped, bad.length)
+  // Nothing made up survives to the stored suggestions.
+  const checked = suggestionsFromBlock(block(bad), trap())
+  assert.deepEqual(checked.items, [])
+  assert.equal(checked.skipped, bad.length)
 
   // A reply with only a broken block keeps its text and highlights nothing.
   const broken = readReply('Use a minor key.\n<note-suggestions>{oops}</note-suggestions>', trap())
@@ -268,11 +270,79 @@ test('the system prompt explains the format and fits the Python gateway limit', 
   assert.match(SYSTEM_PROMPT, /C2 to C6/)
 })
 
-test('Claude is reminded what it highlighted', () => {
-  assert.equal(suggestionsMemo(undefined), '')
-  assert.equal(suggestionsMemo({ items: [], skipped: 2 }), '')
-  const memo = suggestionsMemo({ items: items().slice(0, 2), skipped: 0 })
-  assert.equal(memo, '\n[Highlighted in the editor: Retro Lead pattern 1: Add E4 at step 9 (4 steps); Retro Lead pattern 1: Remove C4 at step 4]')
+test('earlier suggestions return to the history in the exact block format, and read back identically', () => {
+  assert.equal(suggestionsForHistory(undefined), '')
+  assert.equal(suggestionsForHistory({ items: [], skipped: 2 }), '')
+  const set = { summary: 'Dreamy lead', items: items().slice(0, 2), skipped: 0 }
+  const history = suggestionsForHistory(set)
+  assert.equal(history, '<note-suggestions>{"summary":"Dreamy lead","items":[' +
+    '{"action":"add","channel":"Retro Lead","pattern":1,"step":9,"note":"E4","length":4},' +
+    '{"action":"remove","channel":"Retro Lead","pattern":1,"step":4,"note":"C4"}]}</note-suggestions>\n')
+  // Round trip: what Claude sees is exactly what it would have to write.
+  const { suggestions } = readReply(history + 'Text', trap())
+  assert.deepEqual(suggestions.items.map(describeSuggestion), set.items.map(describeSuggestion))
+  assert.doesNotMatch(SYSTEM_PROMPT, /Highlighted in the editor/)
+})
+
+test('make/create requests: the prompt requires the block, first, for every note or step', () => {
+  assert.match(SYSTEM_PROMPT, /REQUIRED whenever your answer involves specific notes or steps/)
+  assert.match(SYSTEM_PROMPT, /make, create, compose, write, generate/)
+  assert.match(SYSTEM_PROMPT, /Start your reply with exactly one block/)
+  assert.match(SYSTEM_PROMPT, /never list them only in prose/)
+  assert.match(SYSTEM_PROMPT, /"steps":\[1,5,9,13\]/)
+  assert.doesNotMatch(SYSTEM_PROMPT, /Leave the block out when you have no specific notes/)
+})
+
+test('the natural ways Claude writes suggestions are understood, then still checked strictly', () => {
+  const project = trap()
+  const reply = `<note_suggestions>${JSON.stringify({ summary: 'Four on the floor', items: [
+    // Several steps in one item, a drum hit with a note attached, a shortened channel name.
+    { action: 'add', channel: 'Kick', pattern: 1, steps: [2, 3, 5], note: 'C1', why: 'Pulse' },
+    // A chord written as notes, lowercase note names, a string step, an over-long length.
+    { action: 'Add', channel: 'retro-lead', pattern: '1', step: '17', notes: ['c4', 'eb4', 'G4'], length: 40 },
+    // Hyphen/space-insensitive names; a synonym action.
+    { action: 'delete', channel: 'hihat closed', pattern: 1, step: 1 },
+  ] })}</note_suggestions>\nHere is a beat.`
+  const { text, suggestions } = readReply(reply, project)
+  assert.equal(text, 'Here is a beat.')
+  assert.deepEqual(suggestions.items.map((item) => `${item.channelId} ${describeSuggestion(item)}`), [
+    'kick Light step 2', 'kick Light step 3', 'kick Light step 5',
+    'synth_lead Add C4 at step 17 (16 steps)', 'synth_lead Add D#4 at step 17 (16 steps)', 'synth_lead Add G4 at step 17 (16 steps)',
+    // Trap Heat's closed hat plays every step, so turning step 1 off is a real change.
+    'hat_closed Turn off step 1',
+  ])
+  assert.equal(suggestions.skipped, 0)
+})
+
+test('a fenced block labelled note-suggestions is read too', () => {
+  const reply = 'Try this.\n```note-suggestions\n' + block([{ action: 'add', channel: 'Kick 808', pattern: 1, step: 2 }]) + '\n```'
+  const { text, suggestions } = readReply(reply, trap())
+  assert.equal(text, 'Try this.')
+  assert.deepEqual(suggestions.items.map(describeSuggestion), ['Light step 2'])
+})
+
+test('channel matching never guesses between two channels', () => {
+  // "Hi-Hat" could be Hi-Hat Closed or Hi-Hat Open: rejected, not guessed.
+  const { suggestions } = readReply(reply([{ action: 'add', channel: 'Hi-Hat', pattern: 1, step: 2 }]), trap())
+  assert.equal(suggestions.items.length, 0)
+  assert.equal(suggestions.skipped, 1)
+  // Two channels that only differ after the shared prefix.
+  const project = trap()
+  project.channels.push({ ...project.channels[0], id: 'kick2', name: 'Kick 808 Punchy' })
+  assert.equal(readReply(reply([{ action: 'add', channel: 'Kick 80', pattern: 1, step: 2 }]), project).suggestions.items.length, 0)
+})
+
+test('a big "make me a beat" answer keeps up to 32 notes and steps', () => {
+  const project = createStudioProject(null)
+  const items = [
+    { action: 'add', channel: 'Kick 808', pattern: 1, steps: [1, 5, 9, 13, 17, 21, 25, 29] },
+    { action: 'add', channel: 'Hi-Hat Closed', pattern: 1, steps: Array.from({ length: 16 }, (_, i) => i * 2 + 1) },
+    { action: 'add', channel: 'Snare Gritty', pattern: 1, steps: [5, 13, 21, 29] },
+    { action: 'add', channel: 'Retro Lead', pattern: 1, steps: [1, 9, 17, 25], note: 'E4', length: 4 },
+  ]
+  const { suggestions } = readReply(reply(items), project)
+  assert.equal(suggestions.items.length, 32)
+  assert.equal(suggestions.skipped, 0)
 })
 
 test('Show marks exactly the chosen suggestion without changing anything', async () => {
@@ -292,4 +362,16 @@ test('Show marks exactly the chosen suggestion without changing anything', async
   assert.deepEqual([...pads].filter(([, pad]) => pad.focused).map(([key]) => key), ['snare:2'])
   assert.equal(rackHighlights(resolved, 1).get('snare:2').focused, false)
   assert.deepEqual(project, before)
+})
+
+test('make/create questions are recognized for the "Get notes I can apply" follow-up', async () => {
+  const { asksForNotes, NOTES_FOLLOW_UP } = await import('../src/assistant/noteCoach.ts')
+  for (const question of ['Make me a house beat', 'Create a dreamy melody', 'Compose a bassline for pattern 2',
+    'Can you write some chords?', 'Generate a trap drum pattern', 'Help me make this sound more energetic with a new hi-hat groove']) {
+    assert.equal(asksForNotes(question), true, question)
+  }
+  for (const question of ['What does the low-pass filter do?', 'How do I share this project?', 'Why is it so quiet?']) {
+    assert.equal(asksForNotes(question), false, question)
+  }
+  assert.ok(NOTES_FOLLOW_UP.length < 200)
 })

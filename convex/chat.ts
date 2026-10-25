@@ -5,7 +5,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { HISTORY_MESSAGES } from './assistantPrompt'
 import { MAX_MESSAGE_CHARS, PENDING_TIMEOUT_MS } from './chatLimits'
-import { suggestionsMemo } from './noteSuggestions'
+import { suggestionsForHistory } from './noteSuggestions'
 import { isActive } from './projectAccess'
 import { suggestionSet } from './schema'
 
@@ -143,8 +143,8 @@ export const forReply = internalQuery({
     if (end < 0) return null
     return {
       projectName: project.name, projectData: project.data,
-      // Claude remembers which notes it highlighted, for follow-ups like "why that note?".
-      history: history.slice(0, end + 1).map(({ role, content, suggestions }) => ({ role, content: content + suggestionsMemo(suggestions) })),
+      // Earlier suggestions go back in their block format: Claude remembers them and keeps using the format.
+      history: history.slice(0, end + 1).map(({ role, content, suggestions }) => ({ role, content: suggestionsForHistory(suggestions) + content })),
     }
   },
 })

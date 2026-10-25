@@ -8,7 +8,7 @@
 // use 0-based steps like the rest of the project data.
 
 export const SUGGESTIONS_TAG = 'note-suggestions'
-export const MAX_SUGGESTIONS = 16
+export const MAX_SUGGESTIONS = 32
 /** Pitches the piano roll can show and edit: C2 through C6. */
 export const LOWEST_PITCH = 36
 export const HIGHEST_PITCH = 84
@@ -67,9 +67,10 @@ const NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 
 /** "Bb3" -> 58; anything that isn't a plain note name -> null. Same rules as src/music/types.ts. */
 export function pitchOf(name: string): number | null {
-  const match = /^([A-G])([#b]?)(-?\d)$/.exec(name)
+  // A lowercase letter is accepted too ("c4", "bb3"); the accidental stays # or b.
+  const match = /^([A-Ga-g])([#b]?)(-?\d)$/.exec(name)
   if (!match) return null
-  const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[match[1] as 'C']
+  const semitone = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 }[match[1].toUpperCase() as 'C']
   return (Number(match[3]) + 1) * 12 + semitone + (match[2] === '#' ? 1 : match[2] === 'b' ? -1 : 0)
 }
 
@@ -92,21 +93,33 @@ function showable(value: unknown): string | null {
  * the output limit. Only the last complete block is used.
  */
 export function extractSuggestionBlock(reply: string): { text: string; block: string | null; found: boolean } {
-  const open = `<${SUGGESTIONS_TAG}>`
-  const close = `</${SUGGESTIONS_TAG}>`
+  // Small spelling variants of the tag are accepted: <note-suggestions>, <note_suggestions>, any case.
+  const open = /<note[-_ ]suggestions>/i
+  const close = /<\/note[-_ ]suggestions>/i
   let text = ''
   let block: string | null = null
   let found = false
   let rest = reply
   for (;;) {
-    const start = rest.indexOf(open)
+    const start = rest.search(open)
     if (start < 0) { text += rest; break }
     found = true
     text += rest.slice(0, start)
-    const end = rest.indexOf(close, start + open.length)
+    const afterOpen = start + rest.slice(start).match(open)![0].length
+    const end = rest.slice(afterOpen).search(close)
     if (end < 0) break // Unterminated: drop everything after the tag.
-    block = rest.slice(start + open.length, end)
-    rest = rest.slice(end + close.length)
+    block = rest.slice(afterOpen, afterOpen + end)
+    rest = rest.slice(afterOpen + end + rest.slice(afterOpen + end).match(close)![0].length)
+  }
+  // A fenced block labelled as suggestions (```note-suggestions ... ```) counts too.
+  if (!found) {
+    const fenced = /```[ \t]*note[-_ ]suggestions[ \t]*\n([\s\S]*?)```/i
+    const match = fenced.exec(text)
+    if (match) {
+      found = true
+      block = match[1]
+      text = text.replace(fenced, '')
+    }
   }
   // Claude sometimes wraps the block in a code fence; remove the empty fence it leaves.
   text = text.replace(/```[a-z]*\s*```/gi, '').replace(/\n{3,}/g, '\n\n').trim()
@@ -117,13 +130,25 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 const whole = (value: unknown, min: number, max: number): number | null =>
   typeof value === 'number' && Number.isInteger(value) && value >= min && value <= max ? value : null
+/** A whole number, also when written as a string ("5"). Positions are never rounded or guessed. */
+const position = (value: unknown, min: number, max: number): number | null =>
+  whole(typeof value === 'string' && /^\s*\d+\s*$/.test(value) ? Number(value) : value, min, max)
+const ACTIONS: Record<string, SuggestionAction> = {
+  add: 'add', place: 'add', insert: 'add', light: 'add',
+  remove: 'remove', delete: 'remove', clear: 'remove',
+  change: 'change', replace: 'change', transpose: 'change', move: 'change',
+}
 const shortText = (value: unknown, max: number): string | undefined => {
   if (typeof value !== 'string') return undefined
   const text = value.replace(/\s+/g, ' ').trim()
   return text ? (text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`) : undefined
 }
 
-/** A suggestion as Claude wrote it, checked for shape only: the channel is still a name or id. */
+/**
+ * A suggestion as Claude wrote it, checked for shape only: the channel is still
+ * a name or id, and note names are checked once the channel's kind is known
+ * (drum steps ignore notes).
+ */
 export interface DraftSuggestion { action: SuggestionAction; channel: string; pattern: number; step: number; note?: string; to?: string; length?: number; why?: string }
 
 /** Checks the block's shape. Anything malformed is counted and left out, never guessed at. */
@@ -140,40 +165,42 @@ export function parseSuggestionBlock(block: string): { summary?: string; items: 
   const items: DraftSuggestion[] = []
   let skipped = 0
   for (const entry of list) {
-    const item = isRecord(entry) ? draft(entry) : null
-    if (item && items.length < MAX_SUGGESTIONS) items.push(item)
-    else skipped++
+    const drafts = isRecord(entry) ? draft(entry) : null
+    if (!drafts) { skipped++; continue }
+    for (const item of drafts) {
+      if (items.length < MAX_SUGGESTIONS) items.push(item)
+      else skipped++
+    }
   }
   return { ...(summary ? { summary } : {}), items, skipped }
 }
 
-function draft(entry: Record<string, unknown>): DraftSuggestion | null {
-  const action = entry.action
-  if (action !== 'add' && action !== 'remove' && action !== 'change') return null
+/**
+ * One entry, which may list several steps ("steps": [1, 5, 9, 13]) or chord
+ * notes ("notes": ["C4", "E4"]); each becomes its own suggestion. Null when
+ * the action, channel, pattern or any step is missing or invalid.
+ */
+function draft(entry: Record<string, unknown>): DraftSuggestion[] | null {
+  const action = ACTIONS[String(entry.action ?? '').trim().toLowerCase()]
   const channel = shortText(entry.channel, 64)
-  const pattern = whole(entry.pattern, 1, MAX_PATTERNS)
-  const step = whole(entry.step, 1, MAX_PATTERN_STEPS)
-  if (!channel || pattern === null || step === null) return null
-  const item: DraftSuggestion = { action, channel, pattern, step: step - 1 }
-  // A note that is present but unreadable or out of range makes the whole suggestion invalid.
-  if (entry.note !== undefined && entry.note !== null) {
-    const note = showable(entry.note)
-    if (!note) return null
-    item.note = note
-  }
-  if (action === 'change') {
-    const to = showable(entry.to)
-    if (!to || !item.note || to === item.note) return null
-    item.to = to
-  }
-  if (entry.length !== undefined && entry.length !== null) {
-    const length = whole(entry.length, 1, MAX_NOTE_STEPS)
-    if (length === null) return null
-    item.length = length
-  }
+  const pattern = position(entry.pattern, 1, MAX_PATTERNS)
+  if (!action || !channel || pattern === null) return null
+  const rawSteps = Array.isArray(entry.steps) ? entry.steps : entry.step !== undefined ? [entry.step] : []
+  const steps = rawSteps.map((step) => position(step, 1, MAX_PATTERN_STEPS))
+  if (!steps.length || steps.some((step) => step === null)) return null
+  const rawNotes = Array.isArray(entry.notes) ? entry.notes : entry.note !== undefined && entry.note !== null ? [entry.note] : []
+  const notes = rawNotes.filter((note): note is string => typeof note === 'string').map((note) => note.trim())
+  if (notes.length !== rawNotes.length) return null
+  const to = typeof entry.to === 'string' ? entry.to.trim() : undefined
+  if (action === 'change' && (!to || notes.length !== 1)) return null
+  // Length only sets how long an added note lasts, so an out-of-range value is clamped, not rejected.
+  const length = typeof entry.length === 'number' && Number.isFinite(entry.length)
+    ? Math.max(1, Math.min(MAX_NOTE_STEPS, Math.round(entry.length))) : undefined
   const why = shortText(entry.why, MAX_WHY_CHARS)
-  if (why) item.why = why
-  return item
+  const base = { action, channel, pattern, ...(to ? { to } : {}), ...(length ? { length } : {}), ...(why ? { why } : {}) }
+  return [...new Set(steps as number[])].flatMap((step) => notes.length
+    ? notes.map((note) => ({ ...base, step: step - 1, note }))
+    : [{ ...base, step: step - 1 }])
 }
 
 // ---- Matching the project -------------------------------------------------
@@ -194,6 +221,28 @@ function findChannel(project: SuggestionProject, reference: string): Channel | n
   if (byId) return byId
   const named = channels.filter((channel) => channel.name.trim().toLowerCase() === reference.trim().toLowerCase())
   return named.length === 1 ? named[0] : null
+}
+
+const squash = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '')
+
+/**
+ * The channel Claude meant: an exact id or name first, then a name written
+ * without spaces or punctuation ("hi-hat closed" for "Hi-Hat Closed"), then
+ * a shortened name that only one channel starts with ("Kick" for "Kick 808").
+ * Never guesses between two channels.
+ */
+function matchChannel(project: SuggestionProject, reference: string): Channel | null {
+  const exact = findChannel(project, reference)
+  if (exact) return exact
+  const wanted = squash(reference)
+  if (wanted.length < 3) return null
+  const channels = Array.isArray(project.channels) ? project.channels : []
+  for (const test of [(name: string) => name === wanted, (name: string) => name.startsWith(wanted)]) {
+    const found = channels.filter((channel) => test(squash(channel.name)) || test(squash(channel.id)))
+    if (found.length === 1) return found[0]
+    if (found.length > 1) return null
+  }
+  return null
 }
 
 /** Pitches sounding from a step: piano-roll notes there, or else the default note of a lit step. */
@@ -226,14 +275,20 @@ export interface ResolvedSuggestion extends NoteSuggestion {
  * dropped. Null when the channel doesn't exist or the action can't apply to it.
  */
 function toStored(project: SuggestionProject, draft: DraftSuggestion): NoteSuggestion | null {
-  const channel = findChannel(project, draft.channel)
+  const channel = matchChannel(project, draft.channel)
   if (!channel) return null
-  const { channel: _reference, note, to, length, ...rest } = draft
+  const { channel: _reference, note: rawNote, to: rawTo, length, ...rest } = draft
   const item: NoteSuggestion = { ...rest, channelId: channel.id, channelName: channel.name }
-  // Drum steps have no pitch or length to change.
+  // Drum steps have no pitch or length: any note Claude attached to a drum hit is ignored.
   if (channel.type === 'drum') return draft.action === 'change' ? null : item
+  // Melodic notes must be real pitches the piano roll can show.
+  const note = showable(rawNote)
   if (!note) return null
-  return { ...item, note, ...(to ? { to } : {}), ...(draft.action === 'add' ? { length: length ?? 2 } : {}) }
+  if (draft.action === 'change') {
+    const to = showable(rawTo)
+    return to && to !== note ? { ...item, note, to } : null
+  }
+  return { ...item, note, ...(draft.action === 'add' ? { length: length ?? 2 } : {}) }
 }
 
 /** Checks a suggestion against the project as it is now. Never invents a channel, pattern, step, or note. */
@@ -310,10 +365,19 @@ export function describeSuggestion(item: NoteSuggestion): string {
   return `Change ${item.note} to ${item.to} at ${at}`
 }
 
-/** A compact line kept in the chat history, so Claude remembers what it highlighted. */
-export function suggestionsMemo(set: SuggestionSet | undefined | null): string {
+/**
+ * An earlier reply's suggestions, written back into the chat history in the
+ * exact block format Claude is asked to use. Claude then remembers what it
+ * highlighted, and its own earlier turns keep showing the format, so later
+ * replies keep including a block. Steps are 1-based, as Claude writes them.
+ */
+export function suggestionsForHistory(set: SuggestionSet | undefined | null): string {
   if (!set?.items.length) return ''
-  return `\n[Highlighted in the editor: ${set.items.map((item) => `${item.channelName} pattern ${item.pattern}: ${describeSuggestion(item)}`).join('; ')}]`
+  const items = set.items.map(({ action, channelName, pattern, step, note, to, length }) => ({
+    action, channel: channelName, pattern, step: step + 1,
+    ...(note ? { note } : {}), ...(to ? { to } : {}), ...(length ? { length } : {}),
+  }))
+  return `<${SUGGESTIONS_TAG}>${JSON.stringify({ ...(set.summary ? { summary: set.summary } : {}), items })}</${SUGGESTIONS_TAG}>\n`
 }
 
 /**

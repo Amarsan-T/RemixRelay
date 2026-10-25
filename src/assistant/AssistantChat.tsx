@@ -8,6 +8,7 @@ import { MAX_MESSAGE_CHARS } from '../../convex/chatLimits'
 import { describeSuggestion } from '../../convex/noteSuggestions'
 import type { SuggestionSet } from '../../convex/noteSuggestions'
 import { UNCOVER_EVENT } from '../ui/Reveal'
+import { asksForNotes, NOTES_FOLLOW_UP } from './noteCoach'
 
 const STARTERS = [
   'I want a dreamy, relaxing melody.',
@@ -154,7 +155,7 @@ export function AssistantChat({ projectId, projectReady = true, highlightedId = 
             ))}
           </div>
         )}
-        {messages?.map((message) => message.role === 'user' ? (
+        {messages?.map((message, index) => message.role === 'user' ? (
           <p key={message._id} className="ml-8 self-end whitespace-pre-wrap break-words rounded-2xl rounded-br-sm bg-aero-aqua-dark/80 px-3 py-2 text-white shadow">
             {message.content}
           </p>
@@ -174,7 +175,7 @@ export function AssistantChat({ projectId, projectReady = true, highlightedId = 
               <RotateCcw className="h-3 w-3" /> Retry
             </button>}
           </div>
-        ) : message.suggestions ? (
+        ) : message.suggestions?.items.length ? (
           <div key={message._id} className="mr-8 flex flex-col gap-2 self-start rounded-2xl rounded-bl-sm bg-white/10 px-3 py-2 text-zinc-100">
             <p className="whitespace-pre-wrap break-words">{message.content}</p>
             <SuggestionCard
@@ -185,9 +186,23 @@ export function AssistantChat({ projectId, projectReady = true, highlightedId = 
             />
           </div>
         ) : (
-          <p key={message._id} className="mr-8 self-start whitespace-pre-wrap break-words rounded-2xl rounded-bl-sm bg-white/10 px-3 py-2 text-zinc-100">
-            {message.content}
-          </p>
+          <div key={message._id} className="mr-8 flex flex-col items-start gap-2 self-start rounded-2xl rounded-bl-sm bg-white/10 px-3 py-2 text-zinc-100">
+            <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            {message.suggestions && message.suggestions.skipped > 0 && (
+              <p className="text-xs text-aero-sky-light/70">Claude's note ideas didn't fit this song, so nothing is highlighted.</p>
+            )}
+            {/* The latest answer to a make/create request came back without notes to apply: one click asks for them. */}
+            {index === messages.length - 1 && index > 0 && messages[index - 1].role === 'user' && asksForNotes(messages[index - 1].content) && (
+              <button
+                type="button"
+                onClick={() => void ask(NOTES_FOLLOW_UP)}
+                disabled={answering || sending || !projectReady}
+                className="aero-pill aero-aqua px-2.5 py-1 text-[11px]"
+              >
+                <Sparkles className="h-3 w-3" /> Get notes I can apply
+              </button>
+            )}
+          </div>
         ))}
       </div>
 
@@ -241,9 +256,6 @@ function SuggestionCard({ suggestions, highlighted, onShow, onHide }: {
   onHide: () => void
 }) {
   const { items, skipped } = suggestions
-  if (!items.length) {
-    return <p className="text-xs text-aero-sky-light/70">Claude's note ideas didn't fit this song, so nothing is highlighted. Try asking again.</p>
-  }
   return (
     <div className="flex flex-col gap-1.5 rounded-xl border border-[#ffd447]/40 bg-[#ffd447]/10 px-2.5 py-2 text-xs">
       <p className="font-semibold text-[#ffe58a]">
