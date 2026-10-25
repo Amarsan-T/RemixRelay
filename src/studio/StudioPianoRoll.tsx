@@ -17,7 +17,7 @@ type Props = {
   setChannels: Dispatch<SetStateAction<StudioChannel[]>>
   setPianoNotes: Dispatch<SetStateAction<PianoNotes>>
   setStepData: Dispatch<SetStateAction<StepData>>
-  preview: (channelId: string, pitch?: string) => void
+  preview: (channelId: string, pitch?: string, velocity?: number) => void
   /** Step within the pattern the playhead is on, or null when this pattern isn't playing. */
   playStep: number | null
   setPatternSteps: Dispatch<SetStateAction<Record<number, number> | undefined>>
@@ -42,6 +42,27 @@ export function StudioPianoRoll({
   // Drums play from the channel rack, so only melodic channels get a piano roll.
   const melodic = project.channels.filter((c) => c.type !== 'drum')
   const channel = melodic.find((c) => c.id === selectedChannelId) ?? melodic[0]
+  const [pianoLoad, setPianoLoad] = useState<{ key: string; status: 'ready' | 'error' } | null>(null)
+  const [pianoAttempt, setPianoAttempt] = useState(0)
+  const pianoAudition = useRef(false)
+  const pianoChannelId = channel?.id
+  const pianoSound = channel?.sound
+  const pianoPitch = channel ? defaultHit(channel).pitch : 'C4'
+  const pianoKey = `${pianoChannelId}:${pianoAttempt}`
+  const pianoState = pianoLoad?.key === pianoKey ? pianoLoad.status : 'loading'
+  useEffect(() => {
+    if (!pianoChannelId || pianoSound !== 'grand-piano') return
+    let mounted = true
+    void preloadPiano().then((ready) => {
+      if (!mounted) return
+      setPianoLoad({ key: pianoKey, status: ready ? 'ready' : 'error' })
+      if (ready && pianoAudition.current) {
+        pianoAudition.current = false
+        preview(pianoChannelId, pianoPitch)
+      }
+    })
+    return () => { mounted = false }
+  }, [pianoChannelId, pianoSound, pianoPitch, pianoKey, preview])
 
   // After picking an instrument, play a note once the engine has the new sound.
   // Effects run after the studio hands the engine its updated pattern.
@@ -73,6 +94,9 @@ export function StudioPianoRoll({
   }
 
   function chooseSound(sound: string) {
+    if (sound === (channel.sound ?? '')) { preview(channel.id, defaultHit(channel).pitch); return }
+    pianoAudition.current = sound === 'grand-piano'
+    if (sound === 'grand-piano') setPianoLoad(null)
     previewNext.current = channel.id
     setChannels((all) => all.map((c) => (c.id === channel.id ? { ...c, sound: sound || undefined } : c)))
   }
@@ -114,6 +138,7 @@ export function StudioPianoRoll({
         </div>
         <div className="flex items-center gap-3">
           <PatternLengthControl
+            key={activePattern}
             project={project}
             pattern={activePattern}
             setPatternSteps={setPatternSteps}
@@ -190,16 +215,22 @@ export function StudioPianoRoll({
           ? 'Click to draw, drag to move or stretch, double-click or right-click to delete. Ctrl + wheel zooms time, Ctrl + middle-drag zooms pitch.'
           : 'Notes are locked. Click or drag a slider (right/up = louder). Shift/Ctrl+click or drag a box to select several, Ctrl+A for all, Esc to clear.'}
       </p>
+      {channel.sound === 'grand-piano' && (
+        <div role={pianoState === 'error' ? 'alert' : 'status'} className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-sky-100/80">
+          {pianoState === 'loading' ? 'Loading piano samples...' : pianoState === 'ready' ? 'Piano ready' : 'Piano samples could not load. Retry, or choose Studio Synth to keep playing.'}
+          {pianoState === 'error' && <button type="button" onClick={() => { pianoAudition.current = true; setPianoAttempt((attempt) => attempt + 1) }} className="aero-pill aero-smoke px-3 py-1">Retry piano samples</button>}
+        </div>
+      )}
 
       <PianoRoll
         notes={notes}
         // Remount when the length changes so the grid re-fits the width.
-        key={length}
+        key={`${activePattern}:${channel.id}:${length}`}
         steps={length}
         onChange={save}
         playStep={playStep}
         color={channel.color}
-        onPreview={(pitch) => preview(channel.id, midiToName(pitch))}
+        onPreview={(pitch, velocity) => preview(channel.id, midiToName(pitch), velocity)}
         mode={mode}
       />
     </div>

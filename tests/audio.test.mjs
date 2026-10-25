@@ -606,3 +606,66 @@ test('stopping fades out from wherever the gain is instead of cutting it', async
   assert.deepEqual(calls, [['hold', 5], ['ramp', 0, 5 + STOP_FADE_SECONDS]])
   assert.ok(STOP_FADE_SECONDS > 0.005 && STOP_FADE_SECONDS <= 0.03, 'long enough not to click, short enough to feel instant')
 })
+
+test('Aero pattern actions keep notes, steps and other patterns consistent', async () => {
+  const { clearPattern, randomizePattern, togglePatternStep } = await import('../src/studio/patternEditing.ts')
+  const original = createStudioProject()
+  const untouched = structuredClone(original)
+  const next = togglePatternStep(original, 1, 'synth_lead', 0)
+  assert.equal(next.stepData[1].synth_lead[0], 0)
+  assert.ok(!next.pianoNotes[1].synth_lead.some((note) => note.step === 0))
+  const cleared = clearPattern(original, 1)
+  assert.ok(cleared.stepData[1].kick.every((value) => value === 0))
+  assert.deepEqual(cleared.pianoNotes[1], {})
+  assert.equal(cleared.stepData[2], original.stepData[2])
+  assert.equal(cleared.song, original.song)
+  const randomized = randomizePattern(original, 1, () => 0)
+  const audio = toAudioPattern(randomized, 1)
+  assert.ok(audio.tracks.every((track) => track.type === 'drums'
+    ? Object.values(track.pattern).every((hits) => hits.length === 0) : track.steps.length === 0),
+  'Randomizing off must not keep authored notes playing behind unlit steps')
+  assert.deepEqual(original, untouched)
+})
+
+test('preset loading fills the selected length and never restores hidden notes after a resize', async () => {
+  const { loadPatternPreset } = await import('../src/studio/patternEditing.ts')
+  const original = createStudioProject()
+  original.patternSteps = { 1: 7 }
+  const short = loadPatternPreset(original, 1, 'Synthwave 80s')
+  const audio = toAudioPattern(short, 1)
+  validatePattern(audio)
+  assert.ok(short.stepData[1].kick.length === 7)
+  assert.ok(Object.values(short.pianoNotes[1]).flat().every((note) => note.step + note.length <= 7))
+  assert.equal(short.pianoNotes[2], original.pianoNotes[2])
+  original.patternSteps[1] = 64
+  const long = loadPatternPreset(original, 1, 'Trap Heat')
+  validatePattern(toAudioPattern(long, 1))
+  assert.equal(long.stepData[1].kick[48], 1)
+  assert.equal(long.song, original.song)
+  assert.equal(loadPatternPreset(original, 1, 'unknown'), original)
+})
+
+test('voice reservation includes release tails across short loops and supports multi-bar patterns', async () => {
+  const { voicesNeeded } = await import('../src/audio/voicePool.ts'); const requiredVoices = (track, steps, release) => voicesNeeded(track.steps, (release + 0.01) * 16, steps)
+  const track = { id: 'lead', name: 'Lead', type: 'melody', muted: false, volumeDb: -12,
+    steps: [{ step: 0, notes: [{ pitch: 'C4', durationSteps: 16 }] }] }
+  assert.equal(requiredVoices(track, 1, 0.2), 20)
+  assert.equal(requiredVoices(track, 64, 0.2), 1)
+  track.steps.push({ step: 32, notes: [{ pitch: 'E4', durationSteps: 16 }] })
+  assert.equal(requiredVoices(track, 64, 0.2), 1, 'Distant song notes should not reserve phantom one-bar overlaps')
+})
+
+
+test('a disposed pool cannot allocate or schedule voices again', async () => {
+  const { VoicePool } = await import('../src/audio/voicePool.ts')
+  const voices = recordingVoices()
+  const pool = new VoicePool(voices.create, 0.1)
+  pool.prepare(2)
+  pool.dispose()
+  const count = voices.calls.length
+  pool.prepare(8)
+  pool.triggerAttackRelease('C4', 1, 5)
+  assert.equal(pool.size, 0)
+  assert.equal(voices.made(), 2)
+  assert.equal(voices.calls.length, count)
+})

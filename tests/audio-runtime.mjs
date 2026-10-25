@@ -7,6 +7,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const check = (condition, message) => { if (!condition) throw new Error(message) }
 const log = (message) => { results.textContent += `${message}\n` }
 
+// Driver buffer sizes differ. Flush the analyser's history using rendered audio
+// time, not an 80 ms wall-clock guess (which may be shorter than one callback).
+async function waitForAudio(context, seconds = 0.12) {
+  const target = context.currentTime + seconds
+  const deadline = performance.now() + 2000
+  while (context.currentTime < target && performance.now() < deadline) await sleep(12)
+  check(context.currentTime >= target, 'Browser audio clock did not advance')
+}
+
 async function peakSignal(analyser, duration = 200) {
   const data = new Float32Array(analyser.fftSize)
   let peak = 0
@@ -42,8 +51,8 @@ button.addEventListener('click', async () => {
     const context = engine.context
     const analyser = context.createAnalyser()
     analyser.fftSize = 2048
-    engine.limiter.disconnect()
-    engine.limiter.connect(analyser)
+    engine.guard.output.disconnect()
+    engine.guard.output.connect(analyser)
     analyser.connect(context.rawContext.destination)
     const demo = createDemoPattern()
     for (const voice of [...DRUM_VOICES, 'bass', 'melody', 'chords']) {
@@ -61,7 +70,7 @@ button.addEventListener('click', async () => {
       const peak = await peakSignal(analyser, 250)
       check(peak > 0.00001, `${voice} produced no audio signal (context ${context.state}, time ${context.currentTime}, transport ${context.transport.state}, ticks ${context.transport.ticks}, master ${engine.master.gain.value})`)
       engine.stop()
-      await sleep(80)
+      await waitForAudio(context)
       check(await peakSignal(analyser, 40) < 0.000001, `${voice} did not become silent after Stop`)
       log(`PASS ${voice} audio output and stop silence (peak ${peak.toFixed(4)})`)
     }
@@ -74,6 +83,9 @@ button.addEventListener('click', async () => {
       if (state.step !== null && steps.at(-1) !== state.step) steps.push(state.step)
     })
     await engine.play()
+    const trackAnalyser = context.createAnalyser()
+    trackAnalyser.fftSize = 2048
+    engine.mixInput.connect(trackAnalyser)
     await sleep(1250)
     check(steps.includes(15) && steps.filter((step) => step === 0).length >= 2, 'Playhead must cover all 16 steps and loop')
     const ids = [...engine.events]
@@ -82,11 +94,17 @@ button.addEventListener('click', async () => {
     check(engine.events.every((id, index) => id === ids[index]), 'Live updates must preserve the scheduler')
     check(engine.context === context && engine.getState().status === 'playing', 'Live updates must preserve playback')
     for (const track of pattern.tracks) engine.setTrackMuted(track.id, true)
-    await sleep(100)
-    check(await peakSignal(analyser, 80) < 0.000001, 'Muting every track must silence sustained output')
+    await waitForAudio(context)
+    check(await peakSignal(trackAnalyser, 80) < 0.000001, 'Muting must silence every track before the master effects')
+    // Master delay/filter history is downstream of individual channel gates.
+    // Check the gate itself above, then also require the final output to clear.
+    await waitForAudio(context, 0.25)
+    const mutedPeak = await peakSignal(analyser, 80)
+    check(mutedPeak < 0.000001, `Muting every track must silence sustained output (peak ${mutedPeak})`)
     engine.setTrackMuted('bass', false)
     check(await peakSignal(analyser, 1400) > 0.00001, 'Unmuted bass must become audible again')
     unsubscribe()
+    trackAnalyser.disconnect()
     engine.stop()
     log('PASS synchronized 16-step loop, live BPM/notes, and mute/unmute')
 

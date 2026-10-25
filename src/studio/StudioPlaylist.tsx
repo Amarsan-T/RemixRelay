@@ -44,6 +44,7 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
           <label className="flex items-center gap-1.5">
             Length
             <select
+              aria-label="Song length in bars"
               value={song.bars}
               onChange={(e) => {
                 const bars = Number(e.target.value)

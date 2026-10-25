@@ -12,6 +12,9 @@ export interface TrackInstrument {
   setMix(track: Track): void
   playStep(track: Track, step: number, time: number, stepSeconds: number): void
   chokeOpenHat?(time: number): void
+  prepare?(track: Track, loopSteps: number): void
+  preparePreview?(): void
+  getVoiceStats?(): { allocated: number; dropped: number }
   dispose(): void
 }
 
@@ -59,6 +62,9 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
       type: track.type,
       setMix,
       chokeOpenHat,
+      prepare(next) {
+        if (next.type === 'drums') for (const voice of DRUM_VOICES) if (next.pattern[voice]?.some((hit) => hit.velocity !== 0)) drum(voice)
+      },
       playStep(next, step, time) {
         if (next.type !== 'drums' || next.muted) return
         // Open first: a closed hat at the same step chokes the open hat.
@@ -114,8 +120,10 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
     sound: track.sound,
     setMix(next) {
       setMix(next)
-      if (next.type !== 'drums') sound.prepare?.(next.steps)
     },
+    prepare(next, loopSteps) { if (next.type !== 'drums') sound.prepare?.(next.steps, loopSteps) },
+    preparePreview() { sound.preparePreview?.() },
+    getVoiceStats() { return sound.getVoiceStats?.() ?? { allocated: 0, dropped: 0 } },
     playStep(next, step, time, stepSeconds) {
       if (next.type === 'drums' || next.muted) return
       const entry = next.steps.find((item) => item.step === step)

@@ -72,6 +72,7 @@ export function createMixBus(context: Tone.Context, destination: Tone.ToneAudioN
   setMix(initial)
   return {
     input,
+    output,
     setMix,
     dispose() {
       input.dispose()

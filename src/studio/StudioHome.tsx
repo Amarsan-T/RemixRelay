@@ -7,10 +7,12 @@ type Props = {
   projects: ProjectEntry[]
   onOpenProject: (id: string) => void
   onNewProject: () => void
+  creating?: boolean
+  error?: string | null
 }
 
 /** Start screen: pick a project to open in the studio, or start a new one. */
-export function StudioHome({ projects, onOpenProject, onNewProject }: Props) {
+export function StudioHome({ projects, onOpenProject, onNewProject, creating = false, error }: Props) {
   const [query, setQuery] = useState('')
   const shown = projects
     .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
@@ -19,7 +21,7 @@ export function StudioHome({ projects, onOpenProject, onNewProject }: Props) {
   return (
     <AeroBackground className="text-aero-ink">
       {/* Frosted top bar: logo, search, New project */}
-      <GlassPanel gloss className="sticky top-0 z-10 flex items-center gap-3 rounded-none border-x-0 border-t-0 px-4 py-2.5 sm:px-8">
+      <GlassPanel gloss className="sticky top-0 z-10 flex flex-wrap items-center gap-3 rounded-none border-x-0 border-t-0 px-4 py-2.5 sm:px-8">
         <div className="flex items-center gap-2.5">
           {/* Glossy orb logo */}
           <div className="aero-pill aero-aqua h-9 w-9 shrink-0">
@@ -35,10 +37,10 @@ export function StudioHome({ projects, onOpenProject, onNewProject }: Props) {
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search projects..."
           aria-label="Search projects"
-          className="ml-auto hidden w-64 sm:flex"
+          className="order-last w-full sm:order-none sm:ml-auto sm:w-64"
         />
-        <GlassButton onClick={onNewProject} className="ml-auto px-4 py-2 text-sm sm:ml-0">
-          <Plus className="h-4 w-4" /> New project
+        <GlassButton onClick={onNewProject} disabled={creating} aria-busy={creating} className="ml-auto px-4 py-2 text-sm sm:ml-0">
+          <Plus className="h-4 w-4" /> {creating ? 'Creating...' : 'New project'}
         </GlassButton>
       </GlassPanel>
 
@@ -47,6 +49,7 @@ export function StudioHome({ projects, onOpenProject, onNewProject }: Props) {
         {/* Navy for contrast on the sky, with a Vista-style white glow behind it. */}
         <h1 className="metro-title text-5xl text-aero-ink [text-shadow:0_1px_0_rgba(255,255,255,0.7),0_0_22px_rgba(255,255,255,0.85)]">Your projects</h1>
         <p className="mt-3 text-base text-aero-ink">Open a project to keep working, or start a new one.</p>
+        {error && <GlassPanel role="alert" className="mt-4 rounded-xl px-4 py-3 text-red-900">{error}</GlassPanel>}
 
         {shown.length === 0 ? (
           <GlassPanel className="mt-10 rounded-2xl px-6 py-8 text-center text-sm">No projects match "{query}".</GlassPanel>

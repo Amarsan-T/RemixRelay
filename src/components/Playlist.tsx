@@ -82,7 +82,8 @@ export function Playlist({
     onSelectPattern(clip.patternId)
     const { bar, track } = cellAt(e)
     drag.current = { id: clip.id, grabBar: bar, grabTrack: track, origin: clip }
-    gridRef.current!.setPointerCapture(e.pointerId)
+    // Grid capture retargets clicks and breaks double-click-to-edit.
+    e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   function onPointerMove(e: PointerEvent<HTMLDivElement>) {
@@ -144,6 +145,8 @@ export function Playlist({
 
         <div
           ref={gridRef}
+          role="region"
+          aria-label="Playlist grid"
           className={`relative ${selectedPatternId ? 'cursor-copy' : 'cursor-default'}`}
           style={{
             width,
@@ -167,6 +170,10 @@ export function Playlist({
             return (
               <div
                 key={clip.id}
+                data-clip-id={clip.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`${pattern.name}, track ${clip.track + 1}, bar ${clip.startBar + 1}`}
                 className={`absolute cursor-grab overflow-hidden rounded-md border active:cursor-grabbing ${selected ? 'border-white/80' : 'border-black/30'}`}
                 style={{
                   left: clip.startBar * BAR_W + 1,
@@ -178,6 +185,10 @@ export function Playlist({
                 title={`${pattern.name}: double-click to edit notes, right-click to remove`}
                 onPointerDown={(e) => onClipPointerDown(e, clip)}
                 onDoubleClick={() => onOpenPattern(pattern.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') { event.preventDefault(); onOpenPattern(pattern.id) }
+                  if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); remove(clip.id) }
+                }}
                 onContextMenu={(e) => {
                   e.preventDefault()
                   remove(clip.id)

@@ -1,0 +1,71 @@
+import {test,expect} from '@playwright/test'
+
+test('Convex: two independent Chrome sessions autosave, reload, merge edits, reconnect and share',async({page,browser},info)=>{
+ test.skip(!info.config.metadata.syncOrigin,'Run npm run test:e2e for a disposable anonymous local Convex backend.')
+ test.setTimeout(60000)
+ const origin=info.config.metadata.syncOrigin
+ const cloud=/https?:\/\/[^/]*\.convex\.(cloud|site)\//
+ await page.route(cloud,route=>route.abort())
+ await page.goto(origin)
+ await page.getByRole('button',{name:'New project',exact:true}).click()
+ await expect(page.getByLabel('Tempo BPM')).toBeVisible()
+ const projectUrl=page.url()
+ expect(new URL(projectUrl).searchParams.has('project')).toBe(true)
+ const second=await browser.newContext({viewport:{width:1440,height:1000}})
+ await second.route(cloud,route=>route.abort())
+ const peer=await second.newPage()
+ const errors=[]
+ page.on('pageerror',error=>errors.push(error.message));peer.on('pageerror',error=>errors.push(error.message))
+ try{
+  await peer.goto(projectUrl)
+  const button=(p,name)=>p.getByRole('button',{name,exact:true})
+  const step=(p,name)=>button(p,name)
+  await expect(step(peer,'Kick 808 step 2')).toBeVisible()
+  await Promise.all([step(page,'Kick 808 step 2').click(),step(peer,'Snare Gritty step 3').click()])
+  for(const p of [page,peer]){
+   await expect(step(p,'Kick 808 step 2')).toHaveAttribute('aria-pressed','true')
+   await expect(step(p,'Snare Gritty step 3')).toHaveAttribute('aria-pressed','true')
+  }
+  await page.getByLabel('Tempo BPM').fill('93')
+  await page.getByLabel('Tempo BPM').press('Enter')
+  await expect(peer.getByLabel('Tempo BPM')).toHaveValue('93')
+  await button(page,'Piano Roll').click()
+  await page.getByRole('radio',{name:'Chiptune',exact:true}).click()
+  await button(peer,'Piano Roll').click()
+  await expect(peer.getByRole('radio',{name:'Chiptune',exact:true})).toHaveAttribute('aria-checked','true')
+  await button(page,'Channel Rack').click()
+  await button(peer,'Channel Rack').click()
+  await page.context().setOffline(true)
+  await step(page,'Sub 808 step 4').click()
+  await step(peer,'Kick 808 step 5').click()
+  await page.context().setOffline(false)
+  for(const p of [page,peer]){
+   await expect(step(p,'Sub 808 step 4')).toHaveAttribute('aria-pressed','true')
+   await expect(step(p,'Kick 808 step 5')).toHaveAttribute('aria-pressed','true')
+  }
+  await button(page,'Playlist').click()
+  await page.getByLabel('Playlist grid').click({position:{x:20,y:20}})
+  await button(peer,'Playlist').click()
+  await expect(peer.locator('[data-clip-id]')).toHaveCount(1)
+  await expect(page.getByLabel('Save status')).toHaveText('Saved')
+  await peer.reload()
+  await expect(peer.locator('[data-clip-id]')).toHaveCount(1)
+  await expect(peer.getByLabel('Tempo BPM')).toHaveValue('93')
+  await button(peer,'Channel Rack').click()
+  await expect(step(peer,'Sub 808 step 4')).toHaveAttribute('aria-pressed','true')
+  await peer.context().grantPermissions(['clipboard-read','clipboard-write'],{origin})
+  await button(peer,'Copy share link').click()
+  await expect(button(peer,'Copy share link')).toHaveText('COPIED')
+  expect(await peer.evaluate(()=>navigator.clipboard.readText())).toBe(projectUrl)
+  // Leaving within the debounce window must flush the final edit.
+  await step(peer,'Kick 808 step 6').click()
+  await button(peer,'Home').click()
+  await page.reload()
+  await button(page,'Channel Rack').click()
+  await expect(step(page,'Kick 808 step 6')).toHaveAttribute('aria-pressed','true')
+  await button(page,'Home').click()
+  await button(page,'New project').click()
+  await expect(step(page,'Kick 808 step 2')).toHaveAttribute('aria-pressed','false')
+  expect(errors).toEqual([])
+ }finally{await second.close()}
+})

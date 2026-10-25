@@ -98,6 +98,8 @@ export interface PreviewOptions {
   drum?: DrumVoice
   pitch?: string
   durationSteps?: number
+  /** Optional audition loudness; omitted keeps the original 0.8 velocity. */
+  velocity?: number
 }
 
 export interface PlaybackState {

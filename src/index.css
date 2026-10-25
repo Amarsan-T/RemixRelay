@@ -38,6 +38,15 @@ button:not(:disabled) { cursor: pointer; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 :focus-visible { outline: 2px solid var(--color-aero-glow); outline-offset: 2px; }
 
+/* Keep the glossy controls usable when transport/toolbars wrap on smaller screens. */
+.studio-shell .aero-pill { flex-shrink: 0; white-space: nowrap; }
+.studio-tabs .metro-pivot { white-space: nowrap; }
+.studio-channel-controls { background: #1c3041; }
+.studio-channel-controls > div { flex-shrink: 0; }
+.studio-channel-controls > button:last-child { flex-shrink: 1; }
+.studio-shell header, .studio-tools { max-height: 42dvh; overflow-y: auto; }
+.studio-shell main > .aero-panel { flex-shrink: 0; }
+
 @layer components {
   /* ---- Backgrounds ------------------------------------------------------ */
 

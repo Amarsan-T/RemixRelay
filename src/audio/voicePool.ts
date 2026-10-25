@@ -27,6 +27,7 @@ export class VoicePool implements SoundVoice {
   private readonly create: () => PoolVoice
   private readonly releaseSeconds: number
   private readonly maxVoices: number
+  private disposed = false
 
   constructor(create: () => PoolVoice, releaseSeconds: number, maxVoices = 32) {
     this.create = create
@@ -40,10 +41,12 @@ export class VoicePool implements SoundVoice {
 
   /** Builds voices ahead of time, so playback rarely has to build one mid-loop. */
   prepare(count: number): void {
+    if (this.disposed) return
     while (this.voices.length < Math.min(count, this.maxVoices)) this.voices.push({ voice: this.create(), freeAt: 0 })
   }
 
   triggerAttackRelease(note: string, duration: number, time: number, velocity = 1): void {
+    if (this.disposed || velocity === 0) return
     let slot = this.voices.find((entry) => entry.freeAt <= time)
     if (!slot) {
       if (this.voices.length >= this.maxVoices) {
@@ -59,27 +62,43 @@ export class VoicePool implements SoundVoice {
   }
 
   dispose(): void {
+    if (this.disposed) return
+    this.disposed = true
     for (const { voice } of this.voices) voice.dispose()
     this.voices = []
+  }
+
+  busyAt(time: number): number {
+    return this.voices.filter((entry) => entry.freeAt > time).length
   }
 }
 
 /**
  * Most notes a track can have sounding at once, counting each note's release.
  * `releaseSteps` should assume the fastest tempo, where a release spans the most steps.
+ * Supplying loopSteps includes tails carried over from previous repetitions;
+ * omitting it preserves the non-cyclic estimate used by existing callers.
  */
-export function voicesNeeded(steps: readonly NoteStep[], releaseSteps: number): number {
+export function voicesNeeded(steps: readonly NoteStep[], releaseSteps: number, loopSteps?: number): number {
   const edges: [at: number, change: number][] = []
   for (const { step, notes } of steps) {
     for (const note of notes) {
       if (note.velocity === 0) continue
-      edges.push([step, 1], [step + note.durationSteps + releaseSteps, -1])
+      const length = note.durationSteps + releaseSteps
+      const previousCycles = loopSteps === undefined ? 0 : Math.ceil(length / loopSteps)
+      for (let cycle = -previousCycles; cycle <= 0; cycle++) {
+        const start = step + cycle * (loopSteps ?? 0)
+        edges.push([start, 1], [start + length, -1])
+      }
     }
   }
   // Ends sort before starts at the same moment: a voice frees up just in time.
   edges.sort((a, b) => a[0] - b[0] || a[1] - b[1])
   let sounding = 0
   let most = 0
-  for (const [, change] of edges) most = Math.max(most, (sounding += change))
+  for (const [time, change] of edges) {
+    sounding += change
+    if (loopSteps === undefined || (time >= 0 && time < loopSteps)) most = Math.max(most, sounding)
+  }
   return most
 }

@@ -7,10 +7,9 @@ import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
 /**
- * Overall loudness, applied just before the limiter. The mix peaked around
- * -20 dBFS, far too quiet; this lifts everything evenly to peaks around -5 dBFS.
- * The limiter (-1 dBFS) still catches anything louder, so it can't clip.
- * Raise or lower it to taste: +6 is about twice as loud.
+ * Preserve the original studio loudness before the limiter. Its compressor
+ * alone does not catch every transient, so the final output guard bounds peaks.
+ * Do not also apply the superseded -6 dB adjustment from the UI integration.
  */
 const MASTER_BOOST_DB = 15
 const PLAYING_GAIN = 0.8 * Tone.dbToGain(MASTER_BOOST_DB)
@@ -130,12 +129,12 @@ export class AudioEngine {
     if (source.type === 'drums') {
       const voice = options.drum ?? 'kick'
       if (!DRUM_VOICES.includes(voice)) throw new TypeError('Unknown drum preview voice')
-      preview = { ...source, pattern: { kick: [], snare: [], closedHat: [], openHat: [], [voice]: [{ step: 0 }] } }
+      preview = { ...source, pattern: { kick: [], snare: [], closedHat: [], openHat: [], [voice]: [{ step: 0, velocity: options.velocity ?? 0.8 }] } }
     } else {
       preview = { ...source, steps: [{ step: 0, notes: [{
         pitch: options.pitch ?? source.steps[0]?.notes[0]?.pitch ?? (source.type === 'bass' ? 'C2' : 'C4'),
         durationSteps: options.durationSteps ?? 2,
-        velocity: 0.8,
+        velocity: options.velocity ?? 0.8,
       }] }] }
     }
     validatePattern({ ...this.pattern, tracks: [preview] })
@@ -145,6 +144,8 @@ export class AudioEngine {
     const latest = this.pattern.tracks.find((track) => track.id === id)
     if (!latest || latest.type !== preview.type) return
     this.syncInstruments()
+    this.instruments.get(id)?.prepare?.(preview, totalSteps(this.pattern))
+    this.instruments.get(id)?.preparePreview?.()
     // Previews skip the scheduling look-ahead (context.now() includes it) so clicks sound instantly.
     const time = this.context.immediate() + 0.005
     this.master.gain.setValueAtTime(PLAYING_GAIN, time)
@@ -173,6 +174,7 @@ export class AudioEngine {
     // This run's instruments and buses. The next run builds its own.
     const run = [...this.instruments.values(), this.mixInput, this.masterBus]
     const runInput = this.mixInput
+    const runOutput = this.masterBus?.output
     this.instruments.clear()
     this.mixInput = null
     this.masterBus = null
@@ -183,6 +185,9 @@ export class AudioEngine {
       // master again) can't bring back notes from this run.
       if (this.master) fadeOut(this.master.gain, now)
       if (runInput) fadeOut(runInput.gain, now)
+      // A new run can reopen the shared master while JS retirement is delayed.
+      // Fade after this run's effects too, keeping its buffered delay inaudible.
+      if (runOutput) fadeOut(runOutput.gain, now)
       this.context.transport.stop(now)
       for (const id of this.events) this.context.transport.clear(id)
       this.context.draw.cancel(0)
@@ -290,6 +295,9 @@ export class AudioEngine {
       this.failedTracks.clear()
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
+        // Keep the verified #10 stall policy: don't replay overdue attacks
+        // together at the current time when the UI thread resumes.
+        if (!context.isOffline && time < context.immediate() + 0.003) return
         const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % loopSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
         const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
@@ -363,6 +371,7 @@ export class AudioEngine {
         this.instruments.set(track.id, createTrackInstrument(this.context, destination, track))
       }
       this.instruments.get(track.id)?.setMix(track)
+      this.instruments.get(track.id)?.prepare?.(track, totalSteps(this.pattern))
     }
   }
 

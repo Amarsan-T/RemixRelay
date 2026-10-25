@@ -24,6 +24,7 @@ export function useStudioProject(initial?: StudioProject) {
   }, [])
   return {
     project,
+    updateProject: setProject,
     applyChanges,
     setBpm: fieldSetter('bpm'), setLoop: fieldSetter('loop'), setMetronome: fieldSetter('metronome'),
     setChannels: fieldSetter('channels'), setStepData: fieldSetter('stepData'),

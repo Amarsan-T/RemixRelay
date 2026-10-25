@@ -1,12 +1,13 @@
 # RemixRelay audio engine
 
-Framework-independent Tone.js engine for one 16-step bar in 4/4. No samples, React,
-Convex, or network requests are needed. Public imports come from `src/audio/index.ts`.
+Framework-independent Tone.js engine for patterns and arrangements in 4/4.
+Synthesized instruments need no samples or network. The optional Grand Piano
+downloads samples. Public imports come from `src/audio/index.ts`.
 
 ## Integrated studio
 
 The main React/Vite app at `/` now renders Martin's `fl_studio_web_daw.tsx`.
-Its layout, four pattern slots, presets, step editing, embedded note editor, and
+Its Aero layout, up to 32 patterns, presets, step editing, Piano Roll, playlist, and
 mixer are preserved. It uses one `AudioEngine` created by `src/studio/useStudioAudio.ts`.
 There is no second AudioContext, native oscillator implementation, singleton engine,
 or browser-timer playback scheduler in the UI.
@@ -25,15 +26,18 @@ The channel and insert volume gains multiply; channel and insert pans add and cl
 to -1–1. Insert mute/solo combine with channel mute/solo. Insert effects are applied
 to each assigned channel's Tone rack. The master fader in both views edits the same
 mixer field, and the master effects are a shared bus. A master level above 100% is
-supported up to +6 dB. Per-instrument headroom, a limiter, and a final output guard
-protect the mix. The guard leaves levels below 0.8 untouched and rounds off louder
-peaks so they never reach full scale (with the faders up they used to clip).
+supported up to +6 dB. Per-instrument headroom, the limiter, and a final soft output guard protect the mix. The guard passes levels up to 0.8 unchanged and smoothly bounds louder peaks below 0.98.
 
-The previous Pause button is now the **Loop** toggle. With Loop off, Play runs one
-bar and stops; with Loop on it repeats. Space toggles Play/Stop outside form fields
-and buttons. **SONG** is disabled because song arrangement was not implemented in
-Martin's original UI. Channel audition, keyboard previews, metronome, pan, lowpass
+The **Loop** toggle repeats the selected pattern or song. With Loop off, playback
+stops at its end. **PAT** plays the selected pattern; **SONG** plays playlist clips.
+Space toggles Play/Stop outside form fields and buttons. Channel audition,
+velocity-aware keyboard previews, metronome, pan, lowpass
 filter, delay, distortion, and stereo output meters all use the same Tone context.
+
+Pitched synths use the single VoicePool implementation, reserve loop-aware bounded voices, and submit attack/release automation
+together, so a stalled UI thread does not hold their notes. Overdue Transport
+callbacks are skipped. Existing named patches and sampled piano remain supported. Stop fades each retiring run after its effects over 15 ms so a quick restart cannot revive old delay tails.
+See `docs/aero-integration-verification.md` for browser and collaboration tests.
 
 Start locally with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`:
 
@@ -115,10 +119,10 @@ instance on each effect setup. Never reuse a disposed instance.
 | --- | --- |
 | `new AudioEngine(pattern?)` | Validate/copy a pattern; defaults to demo A. No AudioContext yet. |
 | `initialize(): Promise<void>` | Lazily create/resume audio from a user gesture. Optional; `play()` does this too. |
-| `previewTrack(id, { drum?, pitch?, durationSteps? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
+| `previewTrack(id, { drum?, pitch?, durationSteps?, velocity? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
 | `getOutputLevels(): [number, number]` | Read stereo RMS amplitudes, 0–1, for meters; never initializes audio. |
 | `play(): Promise<void>` | Start at step 0, or keep the current run. Concurrent calls share initialization. Rejects on audio setup failure. |
-| `stop(): void` | Fade out over 15 ms (an instant cut clicks), clear owned events, rewind; cancel an in-flight Play. The run's voices are disposed once the fade ends. Repeated calls are safe. |
+| `stop(): void` | Immediately silence, clear owned events/voices, rewind; cancel an in-flight Play. Repeated calls are safe. |
 | `setBpm(bpm)` | Set 40–240 BPM without restarting the Transport. |
 | `setLoop(boolean)` | Repeat one bar, or stop at the next bar end. |
 | `setTrackMuted(id, muted)` | Gate the whole track, including sustained notes; skip new notes while muted. |
@@ -238,15 +242,9 @@ change affects future note durations and step timing, while held notes retain
 their original duration. Notes can sustain over loop boundaries. One-shot mode
 silences tails at the bar boundary.
 
-Stop fades the final output after all effects over 15 ms, then disposes that run's
-voices/effects, so delay tails cannot sound after Stop or reappear in the next run.
-The run's own input fades too, so Play right after Stop can't bring old notes back.
-
-Pitched notes play on pools of monophonic synths (`voicePool.ts`), one note per
-synth, with the release scheduled on the audio clock when the note starts. Tone's
-PolySynth sent future releases through a JavaScript timer, so a busy page (a long
-render, garbage collection) held notes on until it caught up. Overlapping notes of
-the same pitch now each end on time.
+Stop gates the final output after all effects and disposes voices/effects, so delay
+tails cannot sound after Stop or reappear in the next run. Old delayed note releases
+cannot cut notes in the next run.
 Dispose also closes the private AudioContext. Stop/dispose while audio is starting
 cancel that start; a stale async continuation cannot restart playback. Tone Draw
 drives only UI notifications, so background-tab rendering throttling does not

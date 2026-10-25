@@ -61,14 +61,14 @@ export function useStudioAudio(project: StudioProject, activePattern: number, mo
     } catch (error) { report(error) }
   }, [patternError, report])
   const stop = useCallback(() => engineRef.current?.stop(), [])
-  const preview = useCallback((id: string, pitch?: string) => {
+  const preview = useCallback((id: string, pitch?: string, velocity?: number) => {
     if (patternError) return
     const engine = engineRef.current
     if (!engine) return
     setAudioError(null)
     try {
       engine.setPattern(patternRef.current)
-      void engine.previewTrack(id, { drum: DRUM_CHANNELS[id], pitch }).catch((error: unknown) => {
+      void engine.previewTrack(id, { drum: DRUM_CHANNELS[id], pitch, velocity }).catch((error: unknown) => {
         if (engineRef.current === engine) report(error)
       })
     } catch (error) { report(error) }

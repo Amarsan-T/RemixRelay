@@ -257,7 +257,8 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
       drag.current = { kind: 'move', id: note.id, grabStep: step, grabPitch: pitch, origin: note }
       onPreview(note.pitch)
     }
-    gridRef.current!.setPointerCapture(e.pointerId)
+    // Keep click/double-click targeted at the note while moves still bubble.
+    e.currentTarget.setPointerCapture(e.pointerId)
   }
 
   // ---- Velocity mode ------------------------------------------------------

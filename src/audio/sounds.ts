@@ -11,7 +11,9 @@ export interface SoundVoice {
 export interface Sound {
   voice: SoundVoice
   /** Gets ready for these notes before playback reaches them. */
-  prepare?(steps: readonly NoteStep[]): void
+  prepare?(steps: readonly NoteStep[], loopSteps?: number): void
+  preparePreview?(): void
+  getVoiceStats?(): { allocated: number; dropped: number }
   dispose(): void
 }
 
@@ -30,6 +32,8 @@ function chain(source: Source, effects: Tone.ToneAudioNode[], output: Tone.ToneA
   return {
     voice: source.voice,
     prepare: source.prepare,
+    preparePreview: source.preparePreview,
+    getVoiceStats: source.getVoiceStats,
     dispose: () => {
       source.dispose()
       effects.forEach((e) => e.dispose())
@@ -61,11 +65,22 @@ export function synthPool(context: Tone.Context, Voice: MonoVoice, options: obje
   }, release, maxVoices)
   pool.prepare(1)
   // At the fastest tempo a release covers the most steps: MAX_BPM / 15 steps per second.
-  const releaseSteps = release * (MAX_BPM / 15)
+  const releaseSteps = (release + 0.01) * (MAX_BPM / 15)
+  let prepared = ''
   return {
     node,
     voice: pool,
-    prepare: (steps) => pool.prepare(voicesNeeded(steps, releaseSteps)),
+    prepare: (steps, loopSteps) => {
+      const key = JSON.stringify([steps, loopSteps])
+      if (key === prepared) return
+      const held = pool.busyAt(context.currentTime)
+      pool.prepare(voicesNeeded(steps, releaseSteps, loopSteps) + held)
+      prepared = key
+    },
+    preparePreview: () => {
+      if (pool.busyAt(context.immediate() + 0.005) === pool.size) pool.prepare(pool.size + 1)
+    },
+    getVoiceStats: () => ({ allocated: pool.size, dropped: pool.dropped }),
     dispose: () => {
       pool.dispose()
       node.dispose()
@@ -134,8 +149,8 @@ function createPiano(context: Tone.Context): Tone.Sampler {
 }
 
 /** Starts downloading the piano now so it's ready by the time a note plays. */
-export function preloadPiano() {
-  void loadPianoSamples().catch(() => {})
+export function preloadPiano(): Promise<boolean> {
+  return loadPianoSamples().then(() => true, () => false)
 }
 
 /** Builds a preset by id, or returns null for an unknown id (the caller falls back to the default synth). */

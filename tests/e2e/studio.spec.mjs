@@ -1,0 +1,218 @@
+import {test,expect} from '@playwright/test'
+
+
+test('piano sample failure is visible and retry recovers without disabling other instruments',async({page})=>{
+  const wav=Buffer.alloc(44+4410*2)
+  wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8)
+  wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22)
+  wav.writeUInt32LE(22050,24);wav.writeUInt32LE(44100,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34)
+  wav.write('data',36);wav.writeUInt32LE(wav.length-44,40)
+  for(let i=0;i<4410;i++)wav.writeInt16LE(Math.round(Math.sin(i*440*2*Math.PI/22050)*2000),44+i*2)
+  let fail=true
+  await page.route('https://tonejs.github.io/audio/salamander/**',route=>fail?route.abort():route.fulfill({contentType:'audio/wav',body:wav}))
+  await openDemo(page)
+  await tab(page,'Piano Roll').click()
+  await page.getByRole('radio',{name:'Grand Piano',exact:true}).click()
+  await expect(page.getByRole('alert')).toContainText('Piano samples could not load')
+  fail=false
+  await tab(page,'Retry piano samples').click()
+  await expect(page.getByRole('status')).toContainText('Piano ready')
+  await page.getByRole('radio',{name:'Studio Synth',exact:true}).click()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+})
+
+
+test.beforeEach(async({page})=>{
+  // Even a misconfigured pre-existing server cannot write to a cloud database.
+  await page.route(/https?:\/\/[^/]*\.convex\.(cloud|site)\//,route=>route.abort())
+})
+const openDemo=async page=>{
+  await page.goto('/')
+  await page.getByRole('button',{name:/Trap Heat/}).click()
+}
+const tab=(page,name)=>page.getByRole('button',{name,exact:true})
+const length=page=>page.getByRole('spinbutton',{name:'Pattern length in steps'})
+const tempo=page=>page.getByRole('spinbutton',{name:'Tempo BPM'})
+
+test('Aero project search, creation, navigation and independent project state',async({page})=>{
+  await page.goto('/')
+  await page.getByRole('textbox',{name:'Search projects'}).fill('nothing matches')
+  await expect(page.getByText(/No projects match/)).toBeVisible()
+  await page.getByRole('textbox',{name:'Search projects'}).fill('Trap')
+  await page.getByRole('button',{name:/Trap Heat/}).click()
+  await expect(tab(page,'Song playback mode')).toHaveAttribute('aria-pressed','true')
+  await tempo(page).fill('85')
+  await tempo(page).press('Enter')
+  await expect(tempo(page)).toHaveValue('85')
+  await tab(page,'Home').click()
+  await tab(page,'New project').click()
+  await expect(tab(page,'Pattern playback mode')).toHaveAttribute('aria-pressed','true')
+  await expect(tempo(page)).toHaveValue('120')
+  await tab(page,'Home').click()
+  await page.getByRole('button',{name:/Trap Heat/}).click()
+  await expect(tempo(page)).toHaveValue('85')
+})
+
+test('typed tempo, tap reset, pattern selection and independent editable lengths',async({page})=>{
+  await openDemo(page)
+  await tab(page,'Channel Rack').click()
+  await tempo(page).fill('8')
+  await expect(tempo(page)).toHaveValue('8')
+  await tempo(page).fill('85')
+  await tempo(page).press('Enter')
+  await expect(tempo(page)).toHaveValue('85')
+  await tab(page,'Increase tempo').click()
+  await expect(tempo(page)).toHaveValue('86')
+  await tempo(page).fill('999')
+  await tempo(page).press('Enter')
+  await expect(tempo(page)).toHaveValue('240')
+  await tempo(page).fill('120')
+  await tempo(page).press('Escape')
+  await expect(tempo(page)).toHaveValue('240')
+  // Control only the tap clock: pointer-action/animation waits must not count
+  // toward the intended interval. Actual React click handlers still run.
+  await page.evaluate(()=>{
+    window.__tapNow=10000
+    Object.defineProperty(performance,'now',{configurable:true,value:()=>window.__tapNow})
+  })
+  try{
+    for(const time of [10000,10500]){
+      await page.evaluate(time=>{window.__tapNow=time},time)
+      await tab(page,'Tap tempo').click({force:true})
+    }
+    await expect(tempo(page)).toHaveValue('120')
+    await page.evaluate(()=>{window.__tapNow=14000})
+    await tab(page,'Tap tempo').click({force:true})
+    await expect(tempo(page)).toHaveValue('120')
+    await page.evaluate(()=>{window.__tapNow=14500})
+    await tab(page,'Tap tempo').click({force:true})
+    await expect(tempo(page)).toHaveValue('120')
+  }finally{await page.evaluate(()=>{delete performance.now})}
+  await length(page).fill('24')
+  await length(page).press('Enter')
+  await tab(page,'Select pattern 2').click()
+  await expect(length(page)).toHaveValue('64')
+  await tab(page,'Select pattern 1').click()
+  await expect(length(page)).toHaveValue('24')
+  await tab(page,'New pattern').click()
+  await expect(tab(page,'Select pattern 5')).toHaveAttribute('aria-pressed','true')
+})
+
+test('steps and authored notes agree; clear and randomize replace only the selected pattern',async({page})=>{
+  await openDemo(page)
+  await tab(page,'Channel Rack').click()
+  await tab(page,'Select pattern 2').click()
+  const hit=page.getByRole('button',{name:'Kick 808 step 2',exact:true})
+  await hit.click()
+  await expect(hit).toHaveAttribute('aria-pressed','true')
+  await tab(page,'Select pattern 1').click()
+  await tab(page,'Clear').click()
+  await expect(page.getByRole('button',{name:/ step \d+$/,pressed:true})).toHaveCount(0)
+  await tab(page,'Randomize').click()
+  expect(await page.getByRole('button',{name:/ step \d+$/,pressed:true}).count()).toBeGreaterThan(0)
+  await tab(page,'Select pattern 2').click()
+  await expect(hit).toHaveAttribute('aria-pressed','true')
+})
+
+test('Piano Roll draw, move, resize, velocity, instruments, new channel and deletion reach the rack',async({page})=>{
+  await openDemo(page)
+  await tab(page,'Select pattern 2').click()
+  await tab(page,'Piano Roll').click()
+  const grid=page.locator('.pr-grid')
+  const cell=await grid.evaluate(el=>{
+    const box=el.getBoundingClientRect(),style=getComputedStyle(el)
+    return {x:box.left+Number.parseFloat(style.getPropertyValue('--cell-w'))*2+4,y:box.top+(84-60)*18+8}
+  })
+  await page.mouse.click(cell.x,cell.y)
+  await expect(page.locator('.pr-note')).toHaveCount(1)
+  const note=page.locator('.pr-note')
+  let box=await note.boundingBox()
+  await page.mouse.move(box.x+6,box.y+8);await page.mouse.down()
+  await page.mouse.move(box.x+34,box.y-10);await page.mouse.up()
+  await expect(note).toContainText('C#4')
+  box=await note.boundingBox()
+  await page.mouse.move(box.x+box.width-2,box.y+8);await page.mouse.down()
+  await page.mouse.move(box.x+box.width+28,box.y+8);await page.mouse.up()
+  expect((await note.boundingBox()).width).toBeGreaterThan(box.width)
+  await page.getByRole('tab',{name:'velocity',exact:true}).click()
+  box=await note.boundingBox()
+  await page.mouse.click(box.x+box.width*0.8,box.y+box.height/2)
+  await expect(note).toHaveAttribute('title',/velocity (7|8|9)\d/)
+  await page.getByRole('radio',{name:'Chiptune',exact:true}).click()
+  await expect(page.getByRole('radio',{name:'Chiptune',exact:true})).toHaveAttribute('aria-checked','true')
+  await tab(page,'New channel').click()
+  await expect(page.getByRole('tab',{name:'Chiptune',exact:true})).toHaveAttribute('aria-selected','true')
+  await page.getByRole('tab',{name:'Retro Lead',exact:true}).click()
+  await page.getByRole('tab',{name:'notes',exact:true}).click()
+  await note.dblclick()
+  await expect(page.locator('.pr-note')).toHaveCount(0)
+  await tab(page,'Channel Rack').click()
+  await expect(page.getByRole('button',{name:/Retro Lead step \d+/,pressed:true})).toHaveCount(0)
+})
+
+test('playlist clips place, move, open and delete, and track/length controls update the arrangement',async({page})=>{
+  await openDemo(page)
+  await tab(page,'Clear song').click()
+  const grid=page.locator('[aria-label="Playlist grid"]')
+  await grid.click({position:{x:20,y:76}})
+  await expect(page.locator('[data-clip-id]')).toHaveCount(1)
+  const clip=page.locator('[data-clip-id]')
+  const box=await clip.boundingBox()
+  await page.mouse.move(box.x+20,box.y+22);await page.mouse.down()
+  await page.mouse.move(box.x+68,box.y+74);await page.mouse.up()
+  await expect(clip).toHaveCSS('left','49px')
+  await clip.dblclick()
+  await expect(page.getByRole('heading',{name:/Channel Rack/})).toBeVisible()
+  await expect(tab(page,'Pattern playback mode')).toHaveAttribute('aria-pressed','true')
+  await tab(page,'Playlist').click()
+  await clip.click({button:'right'})
+  await expect(clip).toHaveCount(0)
+  await tab(page,'Track').click()
+  await expect(page.getByText('Track 5',{exact:true})).toBeVisible()
+  await page.getByRole('combobox',{name:'Song length in bars'}).selectOption('16')
+  await expect(page.getByRole('combobox',{name:'Song length in bars'})).toHaveValue('16')
+})
+
+test('mixer labels, toggles, effects, channel controls and shared master faders',async({page})=>{
+  await openDemo(page)
+  await tab(page,'Channel Rack').click()
+  await page.getByRole('button',{name:'Mute Kick 808',exact:true}).click()
+  await expect(page.getByRole('button',{name:'Mute Kick 808',exact:true})).toHaveAttribute('aria-pressed','true')
+  await page.getByRole('button',{name:'Solo Sub 808',exact:true}).click()
+  await expect(page.getByRole('button',{name:'Solo Sub 808',exact:true})).toHaveAttribute('aria-pressed','true')
+  await tab(page,'Mixer').click()
+  for(const [name,value] of [['Master volume','0.42'],['Master filter','6000'],['Master delay','0.2'],['Master distortion','0.1'],['Master pan','0.3']]){
+    const slider=page.getByRole('slider',{name,exact:true}).last()
+    await slider.focus()
+    await slider.press('Home')
+    const increments=await slider.evaluate((input,target)=>Math.round((Number(target)-Number(input.min))/Number(input.step)),value)
+    for(let index=0;index<increments;index++)await slider.press('ArrowRight')
+    await expect(slider).toHaveValue(value)
+  }
+  await expect(page.getByRole('slider',{name:'Master volume',exact:true}).first()).toHaveValue('0.42')
+  await tab(page,'Mute mixer Master').click()
+  await expect(tab(page,'Mute mixer Master')).toHaveAttribute('aria-pressed','true')
+  await tab(page,'Solo mixer Kick / Low').click()
+  await expect(tab(page,'Solo mixer Kick / Low')).toHaveAttribute('aria-pressed','true')
+})
+
+for(const width of [390,768,1440]){
+ test('Aero controls stay reachable at '+width+'px',async({page})=>{
+  await page.setViewportSize({width,height:900})
+  await openDemo(page)
+  for(const name of ['Play','Stop','Loop','Metronome','Song playback mode','Channel Rack','Piano Roll','Mixer','Playlist']){
+    const control=tab(page,name)
+    await control.scrollIntoViewIfNeeded()
+    const box=await control.boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x+box.width).toBeLessThanOrEqual(width+1)
+    await expect(control).toBeVisible()
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(width)
+  await tab(page,'Piano Roll').click()
+  await expect(page.getByRole('heading',{name:/Piano Roll/})).toBeVisible()
+  expect((await page.locator('.piano-roll').boundingBox()).height).toBeGreaterThan(220)
+  await page.getByRole('button',{name:'Play C4',exact:true}).scrollIntoViewIfNeeded()
+  await page.screenshot({path:'test-results/aero-'+width+'.png',fullPage:true})
+ })
+}
