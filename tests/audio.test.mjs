@@ -356,6 +356,27 @@ test('a channel instrument preset reaches the engine and unknown presets are rej
   assert.throws(() => validatePattern(bad), /unknown sound preset kazoo/)
 })
 
+test('each pattern can give a channel its own instrument', () => {
+  const project = createStudioProject()
+  project.stepData[2] = { synth_lead: [1] }
+  project.stepData[3] = { synth_lead: [1] }
+  project.channels = project.channels.map((c) => c.id === 'synth_lead' ? { ...c, patternSounds: { 2: 'grand-piano', 3: 'warm-pad' } } : c)
+  const lead = (pattern) => pattern.tracks.filter((track) => track.id.startsWith('synth_lead'))
+  assert.equal(lead(toAudioPattern(project, 2))[0].sound, 'grand-piano')
+  assert.equal(lead(toAudioPattern(project, 3))[0].sound, 'warm-pad', 'Picking for pattern 3 leaves pattern 2 alone')
+  assert.equal('sound' in lead(toAudioPattern(project, 1))[0], false, 'Patterns without a pick keep the channel sound')
+
+  // In the song, each pattern plays through its own instrument; the edited pattern keeps the channel id.
+  project.song = { bars: 2, clips: [{ id: 'a', patternId: '2', track: 0, startBar: 0 }, { id: 'b', patternId: '3', track: 0, startBar: 1 }] }
+  const song = toAudioSong(project, 3)
+  validatePattern(song)
+  const tracks = lead(song)
+  assert.deepEqual(tracks.map((t) => [t.id, t.sound, t.steps.map((s) => s.step)]), [
+    ['synth_lead', 'warm-pad', [16]],
+    ['synth_lead~grand-piano', 'grand-piano', [0]],
+  ])
+})
+
 test('patterns can be any number of steps long', () => {
   const project = createStudioProject()
   project.patternSteps = { 1: 24 }

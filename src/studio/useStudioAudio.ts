@@ -11,7 +11,7 @@ export function useStudioAudio(project: StudioProject, activePattern: number, mo
   const engineRef = useRef<AudioEngine | null>(null)
   // PAT loops the selected pattern; SONG plays the whole playlist.
   const pattern = useMemo(
-    () => mode === 'song' ? toAudioSong(project) : toAudioPattern(project, activePattern),
+    () => mode === 'song' ? toAudioSong(project, activePattern) : toAudioPattern(project, activePattern),
     [project, activePattern, mode],
   )
   const patternError = useMemo(() => {
