@@ -19,11 +19,14 @@ const MINUTE = 60_000
 
 export function createDemoProjects(): ProjectEntry[] {
   const now = Date.now()
-  const demos: [name: string, preset: string, minutesAgo: number][] = [
+  // preset null = no template: blank patterns, no notes, empty song.
+  const demos: [name: string, preset: string | null, minutesAgo: number][] = [
     ['Trap Heat', 'Trap Heat', 12],
     ['House Party', 'House 4-on-Floor', 60],
     ['Night Drive', 'Synthwave 80s', 3 * 60],
     ['Study Beats', 'Lo-Fi Chill', 26 * 60],
+    // Newest, so it's listed first on the home screen.
+    ['Empty Template', null, 1],
   ]
   return demos.map(([name, preset, minutesAgo], i) => ({
     id: `demo-${i + 1}`,
