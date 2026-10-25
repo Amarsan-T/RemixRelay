@@ -26,7 +26,7 @@ The channel and insert volume gains multiply; channel and insert pans add and cl
 to -1–1. Insert mute/solo combine with channel mute/solo. Insert effects are applied
 to each assigned channel's Tone rack. The master fader in both views edits the same
 mixer field, and the master effects are a shared bus. A master level above 100% is
-supported up to +6 dB. Per-instrument headroom and a limiter protect the mix.
+supported up to +6 dB. Per-instrument headroom, the limiter, and a final soft output guard protect the mix. The guard passes levels up to 0.8 unchanged and smoothly bounds louder peaks below 0.98.
 
 The **Loop** toggle repeats the selected pattern or song. With Loop off, playback
 stops at its end. **PAT** plays the selected pattern; **SONG** plays playlist clips.
@@ -34,9 +34,9 @@ Space toggles Play/Stop outside form fields and buttons. Channel audition,
 velocity-aware keyboard previews, metronome, pan, lowpass
 filter, delay, distortion, and stereo output meters all use the same Tone context.
 
-Pitched synths reserve bounded voices and submit attack/release automation
+Pitched synths use the single VoicePool implementation, reserve loop-aware bounded voices, and submit attack/release automation
 together, so a stalled UI thread does not hold their notes. Overdue Transport
-callbacks are skipped. Existing named patches and sampled piano remain supported.
+callbacks are skipped. Existing named patches and sampled piano remain supported. Stop fades each retiring run after its effects over 15 ms so a quick restart cannot revive old delay tails.
 See `docs/aero-integration-verification.md` for browser and collaboration tests.
 
 Start locally with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`:

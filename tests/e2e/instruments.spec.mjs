@@ -14,7 +14,7 @@ test('every synthesized instrument preset produces finite audio and disposes its
    try{
     await engine.play()
     const context=engine.context,analyser=context.createAnalyser()
-    analyser.fftSize=2048;engine.limiter.connect(analyser)
+    analyser.fftSize=2048;engine.guard.output.connect(analyser)
     const samples=new Float32Array(2048)
     let peak=0,finite=true
     const end=performance.now()+750

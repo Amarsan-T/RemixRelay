@@ -1,7 +1,6 @@
 import * as Tone from 'tone'
 import { createMixBus } from './mixer'
-import { createSound, type SoundVoice } from './sounds'
-import { ScheduledSynth } from './ScheduledSynth'
+import { createSound, synthPool, type Sound } from './sounds'
 import { DRUM_VOICES } from './types'
 import type { DrumVoice, Track } from './types'
 
@@ -109,17 +108,22 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
   }
   // A chosen preset (piano, pad...) replaces the default synth for this track.
   const preset = track.sound ? createSound(track.sound, context, output) : null
-  // Polyphony lets long notes overlap without an old note-off cutting a new one.
-  const fallback = preset ? null : new ScheduledSynth(context,
-    () => new Tone.Synth({ context, ...options[track.type] }), options[track.type].envelope.release).connect(output)
-  const synth: SoundVoice = preset?.voice ?? fallback!
+  // Otherwise the default synth. Its voices let long notes overlap, and every note ends on time.
+  const fallback = preset ? null : synthPool(context, Tone.Synth, options[track.type])
+  fallback?.node.connect(output)
+  const sound: Sound = preset ?? fallback!
+  const synth = sound.voice
+  // Voices are built here and on edits, outside playback, rather than mid-loop.
+  sound.prepare?.(track.steps)
   return {
     type: track.type,
     sound: track.sound,
-    setMix,
-    prepare(next, loopSteps) { if (next.type !== 'drums') synth.prepare?.(next, loopSteps) },
-    preparePreview() { synth.preparePreview?.() },
-    getVoiceStats() { return synth.getVoiceStats?.() ?? { allocated: 0, dropped: 0 } },
+    setMix(next) {
+      setMix(next)
+    },
+    prepare(next, loopSteps) { if (next.type !== 'drums') sound.prepare?.(next.steps, loopSteps) },
+    preparePreview() { sound.preparePreview?.() },
+    getVoiceStats() { return sound.getVoiceStats?.() ?? { allocated: 0, dropped: 0 } },
     playStep(next, step, time, stepSeconds) {
       if (next.type === 'drums' || next.muted) return
       const entry = next.steps.find((item) => item.step === step)
@@ -129,9 +133,7 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
       }
     },
     dispose() {
-      // Disposing prevents delayed PolySynth note-offs from affecting a later run.
-      preset?.dispose()
-      fallback?.dispose()
+      sound.dispose()
       bus.dispose()
     },
   }

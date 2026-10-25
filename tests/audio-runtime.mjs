@@ -51,8 +51,8 @@ button.addEventListener('click', async () => {
     const context = engine.context
     const analyser = context.createAnalyser()
     analyser.fftSize = 2048
-    engine.limiter.disconnect()
-    engine.limiter.connect(analyser)
+    engine.guard.output.disconnect()
+    engine.guard.output.connect(analyser)
     analyser.connect(context.rawContext.destination)
     const demo = createDemoPattern()
     for (const voice of [...DRUM_VOICES, 'bass', 'melody', 'chords']) {

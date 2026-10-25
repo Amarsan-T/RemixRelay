@@ -2,18 +2,26 @@ import * as Tone from 'tone'
 import { createTrackInstrument } from './instruments'
 import type { TrackInstrument } from './instruments'
 import { createDemoPattern, validatePattern } from './patterns'
-import { createMixBus } from './mixer'
+import { createMixBus, createOutputGuard } from './mixer'
 import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
 /**
- * Calibrated pre-limiter headroom. Chrome measured 1.66 full-scale transients
- * at the previous +15 dB boost: Tone's compressor limiter is not a brick wall.
- * Keep normal synthesized demo mixes below full scale without relying on it
- * to catch every attack. This is separate from bounded voice/release handling.
+ * Preserve the original studio loudness before the limiter. Its compressor
+ * alone does not catch every transient, so the final output guard bounds peaks.
+ * Do not also apply the superseded -6 dB adjustment from the UI integration.
  */
-const MASTER_BOOST_DB = 9
+const MASTER_BOOST_DB = 15
 const PLAYING_GAIN = 0.8 * Tone.dbToGain(MASTER_BOOST_DB)
+
+/** Stopping fades out over this long: quick enough to feel instant, slow enough not to click. */
+export const STOP_FADE_SECONDS = 0.015
+
+/** Fades a gain to silence starting at `time`, from wherever it is then. */
+export function fadeOut(gain: Pick<Tone.Param<'gain'>, 'cancelAndHoldAtTime' | 'linearRampToValueAtTime'>, time: number): void {
+  gain.cancelAndHoldAtTime(time)
+  gain.linearRampToValueAtTime(0, time + STOP_FADE_SECONDS)
+}
 
 /**
  * Plays one step on every track. Each instrument is isolated: one that throws
@@ -44,6 +52,7 @@ export class AudioEngine {
   private master: Tone.Gain | null = null
   private mixInput: Tone.Gain | null = null
   private limiter: Tone.Limiter | null = null
+  private guard: ReturnType<typeof createOutputGuard> | null = null
   private masterBus: ReturnType<typeof createMixBus> | null = null
   private meter: Tone.Meter | null = null
   private instruments = new Map<string, TrackInstrument>()
@@ -56,6 +65,8 @@ export class AudioEngine {
   private finishTimer: ReturnType<typeof setTimeout> | null = null
   /** Tracks that already logged a failed step this run, so a loop doesn't flood the console. */
   private failedTracks = new Set<string>()
+  /** Stopped runs still fading out, disposed when their timer fires (or on dispose). */
+  private retiring = new Map<ReturnType<typeof setTimeout>, ({ dispose(): void } | null)[]>()
 
   constructor(pattern: MusicalPattern = createDemoPattern()) {
     validatePattern(pattern)
@@ -90,7 +101,9 @@ export class AudioEngine {
       // can't make them late. 50 ms was too tight for the studio UI.
       this.context = new Tone.Context({ latencyHint: 'interactive', lookAhead: 0.1 })
       this.meter = new Tone.Meter({ context: this.context, channelCount: 2, normalRange: true, smoothing: 0.7 }).connect(this.context.destination)
-      this.limiter = new Tone.Limiter({ context: this.context, threshold: -1 }).connect(this.meter)
+      this.guard = createOutputGuard(this.context)
+      this.guard.output.connect(this.meter)
+      this.limiter = new Tone.Limiter({ context: this.context, threshold: -1 }).connect(this.guard.input)
       // The final gate follows every effect, so Stop also silences feedback tails.
       this.master = new Tone.Gain({ context: this.context, gain: 0 }).connect(this.limiter)
     }
@@ -151,28 +164,38 @@ export class AudioEngine {
     return this.startPromise
   }
 
-  /** Stop, silence all voices, and rewind. Safe before initialization or repeatedly. */
+  /** Stop, fade out all voices, and rewind. Safe before initialization or repeatedly. */
   stop(): void {
     if (this.status === 'disposed') return
     ++this.generation
     this.startPromise = null
     if (this.finishTimer !== null) clearTimeout(this.finishTimer)
     this.finishTimer = null
+    // This run's instruments and buses. The next run builds its own.
+    const run = [...this.instruments.values(), this.mixInput, this.masterBus]
+    const runInput = this.mixInput
+    const runOutput = this.masterBus?.output
+    this.instruments.clear()
+    this.mixInput = null
+    this.masterBus = null
     if (this.context) {
       const now = this.context.immediate()
-      this.master?.gain.cancelScheduledValues(now)
-      this.master?.gain.setValueAtTime(0, now)
+      // Cutting the sound off instantly clicks, so fade it, then tear it down.
+      // The run's own input fades too, so a quick Play (which raises the
+      // master again) can't bring back notes from this run.
+      if (this.master) fadeOut(this.master.gain, now)
+      if (runInput) fadeOut(runInput.gain, now)
+      // A new run can reopen the shared master while JS retirement is delayed.
+      // Fade after this run's effects too, keeping its buffered delay inaudible.
+      if (runOutput) fadeOut(runOutput.gain, now)
       this.context.transport.stop(now)
       for (const id of this.events) this.context.transport.clear(id)
       this.context.draw.cancel(0)
+      this.retire(run)
+    } else {
+      for (const part of run) part?.dispose()
     }
     this.events = []
-    for (const instrument of this.instruments.values()) instrument.dispose()
-    this.instruments.clear()
-    this.mixInput?.dispose()
-    this.masterBus?.dispose()
-    this.mixInput = null
-    this.masterBus = null
     this.status = 'stopped'
     this.step = null
     this.emit()
@@ -232,6 +255,13 @@ export class AudioEngine {
   dispose(): void {
     if (this.status === 'disposed') return
     this.stop()
+    for (const [timer, run] of this.retiring) {
+      clearTimeout(timer)
+      for (const part of run) part?.dispose()
+    }
+    this.retiring.clear()
+    this.guard?.dispose()
+    this.guard = null
     this.master?.dispose()
     this.masterBus?.dispose()
     this.limiter?.dispose()
@@ -265,8 +295,8 @@ export class AudioEngine {
       this.failedTracks.clear()
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
-        // Skip an overdue beat after a blocked UI thread; never replay several
-        // old attacks at "now". Future ticks retain their Transport grid times.
+        // Keep the verified #10 stall policy: don't replay overdue attacks
+        // together at the current time when the UI thread resumes.
         if (!context.isOffline && time < context.immediate() + 0.003) return
         const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % loopSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
@@ -290,7 +320,7 @@ export class AudioEngine {
       this.events.push(transport.schedule((time) => {
         if (this.generation !== generation) return
         transport.stop(time)
-        this.master?.gain.setValueAtTime(0, time)
+        if (this.master) fadeOut(this.master.gain, time)
         // Audio stops at the precise Transport time; the timer only cleans up resources.
         this.finishTimer = setTimeout(() => {
           if (this.generation === generation) this.stop()
@@ -308,6 +338,15 @@ export class AudioEngine {
     } finally {
       if (this.generation === generation) this.startPromise = null
     }
+  }
+
+  /** Disposes a stopped run's instruments and buses once its fade-out has finished. */
+  private retire(run: ({ dispose(): void } | null)[]): void {
+    const timer = setTimeout(() => {
+      this.retiring.delete(timer)
+      for (const part of run) part?.dispose()
+    }, STOP_FADE_SECONDS * 1000 + 50)
+    this.retiring.set(timer, run)
   }
 
   private syncInstruments(): void {

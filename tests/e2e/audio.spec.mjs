@@ -49,17 +49,17 @@ test('audio note release stays on the audio clock through a blocked JavaScript t
  await page.goto('/tests/audio-runtime.html')
  const result=await page.evaluate(async()=>{
   const {Tone}=await import('/tests/e2e/audio-fixture.mjs')
-  const {ScheduledSynth}=await import('/src/audio/ScheduledSynth.ts')
+  const {VoicePool}=await import('/src/audio/voicePool.ts')
   const context=new Tone.Context()
   await context.resume()
-  let voice
-  const synth=new ScheduledSynth(context,()=>voice=new Tone.Synth({context,envelope:{attack:0.005,decay:0.02,sustain:0.5,release:0.04}}),0.04).connect(context.destination)
+  const voice=new Tone.Synth({context,envelope:{attack:0.005,decay:0.02,sustain:0.5,release:0.04}}).connect(context.destination)
+  const synth=new VoicePool(()=>voice,0.04)
   try{
-   synth.preparePreview()
+   synth.prepare(1)
    const time=context.now()
    synth.triggerAttackRelease('C4',0.04,time,0.8)
    const end=performance.now()+400;while(performance.now()<end){}
-   return {level:voice.envelope.getValueAtTime(context.currentTime),stats:synth.getVoiceStats(),time:context.currentTime}
+   return {level:voice.envelope.getValueAtTime(context.currentTime),stats:{allocated:synth.size,dropped:synth.dropped},time:context.currentTime}
   }finally{synth.dispose();context.dispose()}
  })
  expect(result.level).toBe(0)
@@ -82,7 +82,7 @@ test('64 real Chrome loop repetitions keep schedules, voices and output stable t
     await engine.play()
     const context=engine.context
     const analyser=context.createAnalyser();analyser.fftSize=2048;engine.master.connect(analyser)
-    const output=context.createAnalyser();output.fftSize=2048;engine.limiter.connect(output)
+    const output=context.createAnalyser();output.fftSize=2048;engine.guard.output.connect(output)
     const samples=new Float32Array(2048)
     let loops=0,maximumEvents=0,maximumVoices=0,peak=0
     const early=[],late=[],times=[]

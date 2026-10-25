@@ -41,20 +41,22 @@ The backend schema, functions, generated API and deployment settings are unchang
 ## Playback reliability
 
 The old pitched PolySynth path deferred future releases through JavaScript
-timeouts. ScheduledSynth keeps bounded, prepared monophonic Tone voices and
+timeouts. The single VoicePool keeps bounded, prepared monophonic Tone voices and
 submits each note's attack and release together on the audio clock. It includes
-release tails across loop boundaries and arbitrary pattern lengths. Preparation
-happens on edits/startup/preview, not in Transport callbacks. Named synth patches,
+release tails across loop boundaries and arbitrary pattern lengths. Regular loop
+voices are prepared on edits/startup/preview instead of in Transport callbacks. Named synth patches,
 their oscillators/envelopes/effects, and the sampled piano remain available.
 
 Overdue Transport ticks after a main-thread stall are skipped, preventing old
 attacks from being replayed together. Ordinary edits and repeated Play calls
 retain the existing schedule IDs. Stop/disposal clear their resources.
 
-Chrome measured a 1.66 full-scale output transient with the previous +15 dB boost.
-The pre-limiter boost is calibrated to +9 dB separately from the voice/scheduling
-fix. No additional limiter was added. This does not promise a clipping ceiling
-for arbitrary user-authored gain/effect combinations.
+The reconciled engine preserves main's +15 dB boost and final soft output guard:
+levels through 0.8 pass unchanged; louder peaks are bounded near 0.98. It does
+not apply the superseded extra 6 dB reduction. The guard complements the voice
+fix; it does not replace it. Each retiring run also fades after its effects,
+so reopening the shared master cannot revive an old delay tail while cleanup
+is delayed by a busy UI thread.
 
 ## Run checks
 
@@ -120,19 +122,19 @@ reload persistence, sharing, offline recovery, navigation and debounce flushing.
 
 ## Verified results
 
-- npm test: 63/63 passed, no skips.
-- npm run test:audio: 41/41 passed, no skips.
+- npm test: 70/70 passed, no skips.
+- npm run test:audio: 48/48 passed, no skips.
 - npm run lint: passed without warnings.
 - npm run typecheck: passed.
 - npm run build: passed with the reviewed collaborative-demo production settings;
   both index.html and audio-test.html were emitted. Building does not deploy or
   contact the production database; that bundle was not opened against production.
-- npm run test:e2e: 17/17 passed in 3.1 minutes, no skips, using anonymous local
-  Convex and two isolated Chrome sessions. The BPM case was additionally rerun
-  after adding explicit tap-tempo idle-reset timing assertions.
+- npm run test:e2e: 20/20 passed, no skips, using anonymous local Convex and two
+  isolated Chrome sessions. This includes the tap-tempo idle-reset assertions,
+  cold-loop preparation, wet rapid-restart and extreme JavaScript-stall regressions.
 - The final 64-loop Chrome run retained four Transport registrations, at most
   six prepared voices per instrument, and no dropped voices. Onsets stayed on
-  grid; late/early RMS ratio was 0.99449; maximum measured output was 0.84048.
+  grid; late/early RMS ratio was 0.97014; maximum measured output was 0.979994.
   Stop left zero output, owned events and instrument racks.
 - All five synthesized named instrument presets produced finite audio, no dropped
   voices and successful cleanup. The piano sample failure/retry case passed with
@@ -140,3 +142,6 @@ reload persistence, sharing, offline recovery, navigation and debounce flushing.
 - Original sound-design branch, HEAD, dirty/untracked status and all 52 file
   fingerprints were unchanged. Existing worktrees, main and aero-ui were not
   rewritten. Convex/deployment files have no integration diff.
+
+See [the pre-merge manual checklist](pr10-manual-verification.md) for physical
+listening and browser checks that automation cannot replace.
