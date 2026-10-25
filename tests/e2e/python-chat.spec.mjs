@@ -149,6 +149,19 @@ test('React to local Convex to Python HTTP preserves chat and memory after refre
     await coach.getByRole('button',{name:/Apply all \(4\)/}).click()
     await coach.getByRole('button',{name:'Yes, apply'}).click()
     await expect.poll(async()=>{const kick=(await project()).stepData[2].kick;return [0,4,8,12].map(step=>kick[step])}).toEqual([1,1,1,1])
+
+    // Phone width: the chat panel and coach bar fit the screen and stay usable.
+    await page.setViewportSize({width:390,height:844})
+    await expect(coach).toBeVisible()
+    for(const region of [panel,coach]){
+      const box=await region.boundingBox()
+      expect(box.x).toBeGreaterThanOrEqual(0)
+      expect(box.x+box.width).toBeLessThanOrEqual(390)
+    }
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth)).toBeLessThanOrEqual(1)
+    await expect(coach.getByRole('button',{name:'Clear highlights'})).toBeInViewport()
+    await expect(page.getByLabel('Message Claude')).toBeInViewport()
+    await page.screenshot({path:'test-results/browser/coach-mobile.png'})
   }finally{
     await second.close()
     child.kill()

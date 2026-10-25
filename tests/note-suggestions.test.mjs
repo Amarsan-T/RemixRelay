@@ -377,3 +377,35 @@ test('make/create questions are recognized for the "Get notes I can apply" follo
   }
   assert.ok(NOTES_FOLLOW_UP.length < 200)
 })
+
+test('raw JSON never reaches the chat: untagged, fenced or half-tagged suggestions are still read', () => {
+  const json = '{"items":[{"action":"add","channel":"Kick 808","pattern":1,"step":2}]}'
+  for (const [reply, text] of [
+    ['Here you go:\n```json\n' + json + '\n```\nEnjoy.', 'Here you go:\n\nEnjoy.'],
+    ['Here you go:\n' + json, 'Here you go:'],
+    ['Sure.\n' + json + '\n</note-suggestions>', 'Sure.'],
+    ['[{"action":"add","channel":"Kick 808","pattern":1,"step":2}]\nA kick on step 2.', 'A kick on step 2.'],
+  ]) {
+    const result = readReply(reply, trap())
+    assert.equal(result.text, text, reply)
+    assert.deepEqual(result.suggestions.items.map(describeSuggestion), ['Light step 2'], reply)
+    assert.doesNotMatch(result.text, /[{}]|note-suggestions/)
+  }
+  // Ordinary JSON-looking text that isn't suggestions is left alone.
+  assert.equal(readReply('Use {curly} braces and [brackets].', trap()).text, 'Use {curly} braces and [brackets].')
+  assert.equal(readReply('Settings: {"bpm": 120}', trap()).suggestions, null)
+})
+
+test('markdown that the plain-text chat would show literally is tidied', () => {
+  const { text } = readReply('## Plan\n**Kick** on the beat.\n\n\n\n### Why\n* __Punchy__ low end  \n- Clear', trap())
+  assert.equal(text, 'Plan\nKick on the beat.\n\nWhy\n- Punchy low end\n- Clear')
+})
+
+test('the prompt asks for short, plain answers and complete blocks without repeating them in prose', () => {
+  assert.match(SYSTEM_PROMPT, /2-4 short sentences/)
+  assert.match(SYSTEM_PROMPT, /no headings, bold, tables or code blocks/)
+  assert.match(SYSTEM_PROMPT, /longer, detailed answer only when the user asks/)
+  assert.match(SYSTEM_PROMPT, /Don't repeat the individual notes or steps in the text/)
+  assert.match(SYSTEM_PROMPT, /shorten the text, never the block/)
+  assert.ok(SYSTEM_PROMPT.length <= 5000)
+})

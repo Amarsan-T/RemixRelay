@@ -443,3 +443,14 @@ test('malformed or cut-off suggestion blocks keep the answer and highlight nothi
   await flush()
   expect(await reply()).toMatchObject({ status: 'complete', content: 'Try a minor key.', suggestions: { items: [], skipped: 1 } })
 })
+
+test('a messy reply is stored tidy: markdown removed and untagged suggestion JSON turned into suggestions', async () => {
+  projectId = await trapProject()
+  fetchMock.mockImplementationOnce(async () => response('## Groove\n**Kick** on 2 for bounce.\n```json\n' +
+    JSON.stringify({ items: [{ action: 'add', channel: 'Kick 808', pattern: 1, step: 2 }] }) + '\n```'))
+  await send('Make the kick bouncier')
+  await flush()
+  const answer = await reply()
+  expect(answer.content).toBe('Groove\nKick on 2 for bounce.')
+  expect(answer.suggestions!.items).toEqual([{ action: 'add', channelId: 'kick', channelName: 'Kick 808', pattern: 1, step: 1 }])
+})
