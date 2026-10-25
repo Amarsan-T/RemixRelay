@@ -51,3 +51,11 @@ export function useManagementCredentials() {
   } catch { /* Storage denial does not grant management access. */ }
   return deleted
 }
+
+/** After a permanent deletion the key manages nothing; drop it. Storage errors are harmless here. */
+export function forgetCredential(id: string) {
+  try {
+    localStorage.removeItem(prefix + id)
+    window.dispatchEvent(new Event(changed))
+  } catch { /* Nothing to forget. */ }
+}

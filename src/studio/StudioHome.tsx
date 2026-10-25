@@ -12,13 +12,13 @@ type Props = {
   error?: string | null
   onRenameProject: (entry: ProjectEntry, name: string) => Promise<void>
   onDeleteProject: (entry: ProjectEntry) => Promise<void>
+  /** Projects soft-deleted before permanent deletion existed; they can still be restored. */
   deletedProjects?: { id: string; name: string }[]
   onRestoreProject: (id: string) => Promise<void>
-  lastDeletedId?: string
 }
 
 /** Start screen: pick a project to open in the studio, or start a new one. */
-export function StudioHome({ projects, onOpenProject, onNewProject, creating = false, error, onRenameProject, onDeleteProject, deletedProjects = [], onRestoreProject, lastDeletedId }: Props) {
+export function StudioHome({ projects, onOpenProject, onNewProject, creating = false, error, onRenameProject, onDeleteProject, deletedProjects = [], onRestoreProject }: Props) {
   const [query, setQuery] = useState('')
   const [restoring, setRestoring] = useState<string | null>(null)
   const [restoreError, setRestoreError] = useState(false)
@@ -94,15 +94,15 @@ export function StudioHome({ projects, onOpenProject, onNewProject, creating = f
           </div>
         )}
         {deletedProjects.length > 0 && <GlassPanel className="mt-8 rounded-2xl p-5" role="region" aria-label="Recently deleted projects">
-          <h2 className="font-semibold">Recently deleted in this browser</h2>
-          <p className="mt-1 text-sm">Saved music and chat are retained. Restore a project to reopen it.</p>
+          <h2 className="font-semibold">Earlier deleted projects in this browser</h2>
+          <p className="mt-1 text-sm">These were deleted before deletion became permanent. Restore one to reopen it.</p>
           {deletedProjects.map(entry => <div key={entry.id} className="mt-3 flex items-center justify-between gap-3">
             <span className="truncate">{entry.name}</span>
             <GlassButton className="px-4 py-2 text-sm" disabled={restoring !== null}
               onClick={() => {
                 setRestoring(entry.id); setRestoreError(false)
                 void onRestoreProject(entry.id).catch(() => setRestoreError(true)).finally(() => setRestoring(null))
-              }}>{restoring === entry.id ? 'Restoring…' : entry.id === lastDeletedId ? 'Undo' : 'Restore'}</GlassButton>
+              }}>{restoring === entry.id ? 'Restoring…' : 'Restore'}</GlassButton>
           </div>)}
           {restoreError && <p role="alert" className="mt-3 text-sm text-red-900">The project could not be restored. Check your connection and try again.</p>}
         </GlassPanel>}
