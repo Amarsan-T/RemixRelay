@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Music, Plus, Search, Sparkles } from 'lucide-react'
 import type { ProjectEntry } from './projects'
 import { AeroBackground, GlassButton, GlassInput, GlassPanel } from '../ui/Glass'
+import { ProjectActions } from './ProjectActions'
 
 type Props = {
   projects: ProjectEntry[]
@@ -9,11 +10,18 @@ type Props = {
   onNewProject: () => void
   creating?: boolean
   error?: string | null
+  onRenameProject: (entry: ProjectEntry, name: string) => Promise<void>
+  onDeleteProject: (entry: ProjectEntry) => Promise<void>
+  deletedProjects?: { id: string; name: string }[]
+  onRestoreProject: (id: string) => Promise<void>
+  lastDeletedId?: string
 }
 
 /** Start screen: pick a project to open in the studio, or start a new one. */
-export function StudioHome({ projects, onOpenProject, onNewProject, creating = false, error }: Props) {
+export function StudioHome({ projects, onOpenProject, onNewProject, creating = false, error, onRenameProject, onDeleteProject, deletedProjects = [], onRestoreProject, lastDeletedId }: Props) {
   const [query, setQuery] = useState('')
+  const [restoring, setRestoring] = useState<string | null>(null)
+  const [restoreError, setRestoreError] = useState(false)
   const shown = projects
     .filter((p) => p.name.toLowerCase().includes(query.trim().toLowerCase()))
     .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -52,15 +60,16 @@ export function StudioHome({ projects, onOpenProject, onNewProject, creating = f
         {error && <GlassPanel role="alert" className="mt-4 rounded-xl px-4 py-3 text-red-900">{error}</GlassPanel>}
 
         {shown.length === 0 ? (
-          <GlassPanel className="mt-10 rounded-2xl px-6 py-8 text-center text-sm">No projects match "{query}".</GlassPanel>
+          <GlassPanel className="mt-10 rounded-2xl px-6 py-8 text-center text-sm">{projects.length ? `No projects match "${query}".` : 'No projects yet. Start one with New project.'}</GlassPanel>
         ) : (
           <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {shown.map((entry) => (
+              <div key={entry.id} className="relative" data-project-card={entry.id}>
               <button
                 key={entry.id}
                 type="button"
                 onClick={() => onOpenProject(entry.id)}
-                className="aero-glass aero-gloss group flex flex-col overflow-hidden rounded-2xl p-2.5 text-left transition duration-200 hover:-translate-y-1 hover:shadow-[0_14px_36px_rgba(0,90,170,0.35)]"
+                className="aero-glass aero-gloss group flex w-full flex-col overflow-hidden rounded-2xl p-2.5 text-left transition duration-200 hover:-translate-y-1 hover:shadow-[0_14px_36px_rgba(0,90,170,0.35)]"
               >
                 <MiniRack entry={entry} />
                 <div className="flex items-center gap-3 px-1.5 pt-3 pb-1">
@@ -79,9 +88,24 @@ export function StudioHome({ projects, onOpenProject, onNewProject, creating = f
                   </span>
                 </div>
               </button>
+              <ProjectActions entry={entry} onRename={onRenameProject} onDelete={onDeleteProject} />
+              </div>
             ))}
           </div>
         )}
+        {deletedProjects.length > 0 && <GlassPanel className="mt-8 rounded-2xl p-5" role="region" aria-label="Recently deleted projects">
+          <h2 className="font-semibold">Recently deleted in this browser</h2>
+          <p className="mt-1 text-sm">Saved music and chat are retained. Restore a project to reopen it.</p>
+          {deletedProjects.map(entry => <div key={entry.id} className="mt-3 flex items-center justify-between gap-3">
+            <span className="truncate">{entry.name}</span>
+            <GlassButton className="px-4 py-2 text-sm" disabled={restoring !== null}
+              onClick={() => {
+                setRestoring(entry.id); setRestoreError(false)
+                void onRestoreProject(entry.id).catch(() => setRestoreError(true)).finally(() => setRestoring(null))
+              }}>{restoring === entry.id ? 'Restoring…' : entry.id === lastDeletedId ? 'Undo' : 'Restore'}</GlassButton>
+          </div>)}
+          {restoreError && <p role="alert" className="mt-3 text-sm text-red-900">The project could not be restored. Check your connection and try again.</p>}
+        </GlassPanel>}
       </main>
     </AeroBackground>
   )

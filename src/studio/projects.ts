@@ -9,6 +9,9 @@ export interface ProjectEntry {
   /** Last edit, ms since 1970, for "Edited 5 min ago". */
   updatedAt: number
   project: StudioProject
+  version?: number
+  lifecycle?: number
+  canManage?: boolean
 }
 
 // Projects only live in memory for now: edits survive going home and back,

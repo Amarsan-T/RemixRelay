@@ -5,6 +5,7 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { HISTORY_MESSAGES } from './assistantPrompt'
 import { MAX_MESSAGE_CHARS, PENDING_TIMEOUT_MS } from './chatLimits'
+import { isActive } from './projectAccess'
 
 const SHOWN_MESSAGES = 100
 /** Every attempt, including a retry, counts toward these limits. */
@@ -17,7 +18,7 @@ export const list = query({
   args: { projectId: v.string() },
   handler: async (ctx, { projectId }) => {
     const id = ctx.db.normalizeId('projects', projectId)
-    if (!id) return []
+    if (!id || !isActive(await ctx.db.get(id))) return []
     // Convex breaks equal index timestamps with _creationTime, so each question
     // precedes its reply even when both were inserted in one transaction.
     const recent = await ctx.db.query('chatMessages').withIndex('by_project', (q) => q.eq('projectId', id)).order('desc').take(SHOWN_MESSAGES)
@@ -30,7 +31,8 @@ export const send = mutation({
   args: { projectId: v.string(), requestId: v.string(), content: v.string() },
   handler: async (ctx, args) => {
     const projectId = ctx.db.normalizeId('projects', args.projectId)
-    if (!projectId || !(await ctx.db.get(projectId))) throw new ConvexError('This project no longer exists.')
+    const project = projectId ? await ctx.db.get(projectId) : null
+    if (!projectId || !isActive(project)) throw new ConvexError('This project no longer exists.')
     if (!/^[A-Za-z0-9-]{8,64}$/.test(args.requestId)) throw new ConvexError('Invalid request.')
     const content = args.content.trim()
     if (!content) throw new ConvexError('Type a message first.')
@@ -49,7 +51,7 @@ export const send = mutation({
       projectId, role: 'user', content, status: 'complete', createdAt: now, requestId: args.requestId,
     })
     const replyId = await ctx.db.insert('chatMessages', {
-      projectId, role: 'assistant', content: '', status: 'pending', createdAt: now, replyTo: messageId, startedAt: now, attempt: 1,
+      projectId, role: 'assistant', content: '', status: 'pending', createdAt: now, replyTo: messageId, startedAt: now, attempt: 1, projectLifecycle: project.lifecycle ?? 0,
     })
     await scheduleAttempt(ctx, projectId, replyId, 1, now)
     return { messageId, duplicate: false }
@@ -62,14 +64,15 @@ export const retry = mutation({
   handler: async (ctx, { replyId }) => {
     const reply = await ctx.db.get(replyId)
     if (!reply || reply.role !== 'assistant' || reply.status !== 'error') throw new ConvexError('Only a failed reply can be retried.')
-    if (!(await ctx.db.get(reply.projectId))) throw new ConvexError('This project no longer exists.')
+    const project = await ctx.db.get(reply.projectId)
+    if (!isActive(project)) throw new ConvexError('This project no longer exists.')
     const latest = await ctx.db.query('chatMessages').withIndex('by_project', (q) => q.eq('projectId', reply.projectId)).order('desc').first()
     if (latest?._id !== replyId) throw new ConvexError('Only the latest reply can be retried. Ask a new question instead.')
     const now = Date.now()
     await checkCanAsk(ctx, reply.projectId, now)
     await checkLimits(ctx, reply.projectId, now)
     const attempt = (reply.attempt ?? 0) + 1
-    await ctx.db.patch(replyId, { status: 'pending', content: '', startedAt: now, attempt })
+    await ctx.db.patch(replyId, { status: 'pending', content: '', startedAt: now, attempt, projectLifecycle: project.lifecycle ?? 0 })
     await scheduleAttempt(ctx, reply.projectId, replyId, attempt, now)
   },
 })
@@ -105,12 +108,17 @@ const attemptArgs = { replyId: v.id('chatMessages'), attempt: v.optional(v.numbe
 const isCurrent = (reply: Doc<'chatMessages'> | null, attempt = 0): reply is Doc<'chatMessages'> =>
   !!reply && reply.role === 'assistant' && reply.status === 'pending' && (reply.attempt ?? 0) === attempt
 
+async function liveReply(ctx: Pick<MutationCtx, 'db'>, reply: Doc<'chatMessages'>) {
+  const project = await ctx.db.get(reply.projectId)
+  return isActive(project) && (project.lifecycle ?? 0) === (reply.projectLifecycle ?? 0)
+}
+
 /** At most one action may make a paid API call for a particular attempt. */
 export const claim = internalMutation({
   args: attemptArgs,
   handler: async (ctx, { replyId, attempt = 0 }) => {
     const reply = await ctx.db.get(replyId)
-    if (!isCurrent(reply, attempt) || reply.claimedAttempt === attempt) return false
+    if (!isCurrent(reply, attempt) || reply.claimedAttempt === attempt || !(await liveReply(ctx, reply))) return false
     await ctx.db.patch(replyId, { claimedAttempt: attempt })
     return true
   },
@@ -123,7 +131,7 @@ export const forReply = internalQuery({
     const reply = await ctx.db.get(replyId)
     if (!isCurrent(reply, attempt) || !reply.replyTo) return null
     const project = await ctx.db.get(reply.projectId)
-    if (!project) return null
+    if (!isActive(project) || (project.lifecycle ?? 0) !== (reply.projectLifecycle ?? 0)) return null
     const earlier = await ctx.db.query('chatMessages')
       .withIndex('by_project', (q) => q.eq('projectId', reply.projectId).lte('createdAt', reply.createdAt))
       .order('desc').take(3 * HISTORY_MESSAGES)
@@ -142,7 +150,7 @@ export const expire = internalMutation({
   args: attemptArgs,
   handler: async (ctx, { replyId, attempt = 0 }) => {
     const reply = await ctx.db.get(replyId)
-    if (!isCurrent(reply, attempt) || Date.now() - (reply.startedAt ?? reply.createdAt) < PENDING_TIMEOUT_MS) return
+    if (!isCurrent(reply, attempt) || !(await liveReply(ctx, reply)) || Date.now() - (reply.startedAt ?? reply.createdAt) < PENDING_TIMEOUT_MS) return
     await ctx.db.patch(replyId, { status: 'error', content: TIMEOUT_MESSAGE })
   },
 })
@@ -157,7 +165,7 @@ export const finish = internalMutation({
   },
   handler: async (ctx, { replyId, attempt = 0, ...outcome }) => {
     const reply = await ctx.db.get(replyId)
-    if (!isCurrent(reply, attempt)) return
+    if (!isCurrent(reply, attempt) || !(await liveReply(ctx, reply))) return
     await ctx.db.patch(replyId, outcome)
   },
 })
