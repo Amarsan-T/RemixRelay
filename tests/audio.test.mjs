@@ -384,3 +384,71 @@ test('long patterns span several playlist bars and stop at the end of the song',
   assert.equal(patternStepAt(project, 2, 40), null, 'Bars 3-7 have no clip of pattern 2')
   assert.equal(patternStepAt(project, 2, 115), 3)
 })
+
+test('a piano only plays once it holds every sample, and retries after a failed download', async () => {
+  // Node has no Web Audio: stub the download and decoder, and let the test decide when each sample decodes.
+  const { loadPianoInto } = await import('../src/audio/sounds.ts')
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+  const fakePiano = () => ({ disposed: false, added: [], add(note) { this.added.push(note) } })
+  const { fetch: realFetch } = globalThis
+  const realWarn = console.warn
+  const warnings = []
+  const decodes = []
+  console.warn = (...args) => warnings.push(args.join(' '))
+  globalThis.OfflineAudioContext = class {
+    decodeAudioData() { return new Promise((resolve) => decodes.push(resolve)) }
+  }
+  try {
+    // Offline: the piano stays silent, the failure is reported, and nothing is cached.
+    globalThis.fetch = async () => { throw new Error('offline') }
+    const offline = loadPianoInto(fakePiano())
+    await settle()
+    assert.equal(offline.ready, false)
+    assert.match(warnings.join('\n'), /Piano samples failed to load/)
+
+    // Back online: half the samples decoded fills the shared cache, but this piano still holds none.
+    globalThis.fetch = async () => ({ arrayBuffer: async () => new ArrayBuffer(8) })
+    const piano = fakePiano()
+    const load = loadPianoInto(piano)
+    const closed = fakePiano()
+    const closedLoad = loadPianoInto(closed)
+    closed.disposed = true
+    for (let i = 0; i < 20 && decodes.length < 26; i++) await settle()
+    assert.equal(decodes.length, 26, 'The retry downloads every sample again')
+    decodes.slice(0, 13).forEach((resolve, i) => resolve({ sample: i }))
+    await settle()
+    assert.equal(load.ready, false, 'A partly loaded piano must not play')
+    assert.equal(piano.added.length, 0)
+
+    decodes.slice(13).forEach((resolve, i) => resolve({ sample: 13 + i }))
+    await settle()
+    assert.equal(load.ready, true)
+    assert.equal(piano.added.length, 26)
+    assert.equal(closedLoad.ready, false, 'A piano disposed while loading is left alone')
+    assert.equal(closed.added.length, 0)
+
+    const later = fakePiano()
+    assert.equal(loadPianoInto(later).ready, true, 'Once cached, a new piano is ready immediately')
+    assert.equal(later.added.length, 26)
+  } finally {
+    globalThis.fetch = realFetch
+    console.warn = realWarn
+    delete globalThis.OfflineAudioContext
+  }
+})
+
+test('an instrument that fails on a step does not stop the tracks after it', async () => {
+  const { playTracksAtStep } = await import('../src/audio/AudioEngine.ts')
+  const pattern = createDemoPattern()
+  const played = []
+  const instruments = new Map(pattern.tracks.map((track) => [track.id, {
+    playStep(next, step) {
+      if (next.id === 'bass') throw new Error('No available buffers for note: 36')
+      played.push(`${next.id}@${step}`)
+    },
+  }]))
+  const errors = []
+  playTracksAtStep(pattern.tracks, instruments, 4, 0, 0.1, (id, error) => errors.push([id, error.message]))
+  assert.deepEqual(played, ['drums@4', 'melody@4', 'chords@4'])
+  assert.deepEqual(errors, [['bass', 'No available buffers for note: 36']])
+})
