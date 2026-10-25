@@ -4,6 +4,7 @@ import { api } from '../../convex/_generated/api'
 import { changesBetween, queueChange, remoteChanges, toStoredChange, withChanges } from './projectSync'
 import type { ProjectChange } from './projectSync'
 import type { StudioProject } from './types'
+import { MAX_CHANGES_PER_SAVE } from '../../convex/projectChanges'
 
 export type SaveState = 'saved' | 'saving' | 'error'
 
@@ -55,9 +56,11 @@ export function useProjectSync(id: string) {
   const send = useCallback(() => {
     clearTimeout(timer.current)
     if (!projectId || sending.current || !unsent.current.size) return
-    const changes = [...unsent.current.values()]
+    const queued = [...unsent.current.values()]
+    const changes = queued.slice(0, MAX_CHANGES_PER_SAVE)
     sending.current = changes
     unsent.current = new Map()
+    for (const change of queued.slice(MAX_CHANGES_PER_SAVE)) queueChange(unsent.current, change)
     save({ id: projectId, clientId: CLIENT_ID, changes: changes.map(toStoredChange) })
       .then((version) => {
         newestVersion.current = Math.max(newestVersion.current, version)

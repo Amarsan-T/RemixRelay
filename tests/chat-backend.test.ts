@@ -318,3 +318,54 @@ test('network failures are not retried and never expose transport diagnostics', 
   expect((await reply()).content).not.toContain('private')
   expect(fetchMock).toHaveBeenCalledTimes(1)
 })
+
+// Two clients take independent stale snapshots, then call the real atomic projects.save.
+for (const order of ['a-first', 'b-first', 'parallel'] as const) {
+  test(`same-channel stale clients preserve disjoint gates and note onsets (${order})`, async () => {
+    const { changesBetween, toStored } = await import('../src/studio/projectSync')
+    const { createStudioProject } = await import('../src/studio/data')
+    const { togglePatternStep } = await import('../src/studio/patternEditing')
+    const initial = toStored(createStudioProject(null))
+    const id = await t.mutation(api.projects.create, { name: 'Atomic sync', color: '#123456', data: initial })
+    const a = t.withIdentity({ subject: 'independent-a' }), b = t.withIdentity({ subject: 'independent-b' })
+    const [snapshotA, snapshotB] = await Promise.all([a.query(api.projects.get, { id }), b.query(api.projects.get, { id })])
+    const change = (snapshot: typeof snapshotA, step: number) => {
+      const before = snapshot!.data as typeof initial
+      const gates = togglePatternStep(before, 1, 'kick', step)
+      const after = { ...gates, pianoNotes: { ...gates.pianoNotes, 1: { synth_lead: [{ step, note: 'C4', length: 2 }] } } }
+      return changesBetween(before, after)
+    }
+    const left = change(snapshotA, 20), right = change(snapshotB, 23)
+    const saveA = () => a.mutation(api.projects.save, { id, clientId: 'a', changes: left })
+    const saveB = () => b.mutation(api.projects.save, { id, clientId: 'b', changes: right })
+    if (order === 'parallel') await Promise.all([saveA(), saveB()])
+    else if (order === 'a-first') { await saveA(); await saveB() }
+    else { await saveB(); await saveA() }
+    const saved = (await t.query(api.projects.get, { id }))!
+    expect(saved.version).toBe(3)
+    expect(saved.data.stepData[1].kick[20]).toBe(1)
+    expect(saved.data.stepData[1].kick[23]).toBe(1)
+    expect(saved.data.pianoNotes[1].synth_lead.map((n: { step: number }) => n.step).sort()).toEqual([20, 23])
+    // Turning off authored notes at independent steps also patches just those onsets.
+    const offA = changesBetween(saved.data, togglePatternStep(saved.data, 1, 'synth_lead', 20))
+    const offB = changesBetween(saved.data, togglePatternStep(saved.data, 1, 'synth_lead', 23))
+    const removeA = () => a.mutation(api.projects.save, { id, clientId: 'a', changes: offA })
+    const removeB = () => b.mutation(api.projects.save, { id, clientId: 'b', changes: offB })
+    if (order === 'parallel') await Promise.all([removeA(), removeB()])
+    else if (order === 'a-first') { await removeA(); await removeB() }
+    else { await removeB(); await removeA() }
+    const final = (await t.query(api.projects.get, { id }))!
+    expect(final.data.pianoNotes[1].synth_lead).toEqual([])
+    expect(final.data.stepData[1].kick[20]).toBe(1)
+    expect(final.data.stepData[1].kick[23]).toBe(1)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+}
+
+test('invalid atomic changes reject the entire transaction and preserve data/version', async () => {
+  const before = await t.query(api.projects.get, { id: projectId })
+  await expect(t.mutation(api.projects.save, { id: projectId, clientId: 'bad', changes: [
+    { path: ['bpm'], value: 180 }, { path: ['stepData', '1', 'kick', '256'], value: 1 },
+  ] })).rejects.toThrow('Not a project field')
+  expect(await t.query(api.projects.get, { id: projectId })).toEqual(before)
+})

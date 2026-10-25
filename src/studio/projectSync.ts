@@ -1,6 +1,7 @@
-import { applyChanges, NESTED_FIELDS, PROJECT_FIELDS } from '../../convex/projectChanges'
+import { applyChanges, isStepKey, NESTED_FIELDS, PROJECT_FIELDS } from '../../convex/projectChanges'
 import type { ProjectChange } from '../../convex/projectChanges'
 import type { StudioProject } from './types'
+import { DEFAULT_PATTERN_STEPS, MAX_PATTERN_STEPS } from './patternAdapter'
 
 export type { ProjectChange }
 
@@ -8,9 +9,34 @@ type Json = Record<string, unknown>
 const isObject = (value: unknown): value is Json => typeof value === 'object' && value !== null && !Array.isArray(value)
 const keysOf = (a: Json, b: Json) => new Set([...Object.keys(a), ...Object.keys(b)])
 
+/** Both outgoing edits and incoming overlays use the same musical step boundaries. */
+function channelChanges(field: string, pattern: string, channel: string, before: unknown, after: unknown, allowTruncate = true): ProjectChange[] {
+  const path = [field, pattern, channel]
+  const previous = Array.isArray(before) ? before : []
+  if (Array.isArray(after) && (before == null || Array.isArray(before))) {
+    if (field === 'stepData' && (!allowTruncate || after.length >= previous.length) && Math.max(after.length, previous.length) <= MAX_PATTERN_STEPS &&
+        after.every(value => value == null || value === 0 || value === 1)) {
+      return Array.from({ length: Math.max(after.length, previous.length) }, (_, step) => step)
+        .filter(step => (previous[step] ?? 0) !== (after[step] ?? 0))
+        .map(step => ({ path: [...path, String(step)], value: after[step] ?? 0 }))
+    }
+    if (field === 'pianoNotes' && [...previous, ...after].every(note =>
+      isObject(note) && typeof note.step === 'number' && isStepKey(String(note.step)))) {
+      const steps = new Set<number>([...previous, ...after].map(note => note.step as number))
+      return [...steps].flatMap(step => {
+        const oldNotes = previous.filter(note => note.step === step)
+        const newNotes = after.filter(note => note.step === step)
+        return sameValue(oldNotes, newNotes) ? [] : [{ path: [...path, String(step)], value: newNotes }]
+      })
+    }
+  }
+  // Shrinking a gate array is an intentional resize. Preserve legacy bulk replacements/deletions.
+  return sameValue(before, after) ? [] : [{ path, value: after }]
+}
+
 /**
  * The changes one edit made. Edits replace only the objects they touch, so a
- * reference check finds them: per pattern and channel for steps and notes,
+ * reference check finds them: per musical step for gates and notes,
  * per top-level field for everything else.
  */
 export function changesBetween(previous: StudioProject, next: StudioProject): ProjectChange[] {
@@ -32,7 +58,7 @@ export function changesBetween(previous: StudioProject, next: StudioProject): Pr
         continue
       }
       for (const channel of keysOf(patternBefore, patternAfter)) {
-        if (patternBefore[channel] !== patternAfter[channel]) changes.push({ path: [field, pattern, channel], value: patternAfter[channel] })
+        if (patternBefore[channel] !== patternAfter[channel]) changes.push(...channelChanges(field, pattern, channel, patternBefore[channel], patternAfter[channel]))
       }
     }
   }
@@ -106,7 +132,14 @@ export function remoteChanges(local: StudioProject, server: StudioProject, unsav
         continue
       }
       for (const channel of keysOf(minePattern, theirPattern)) {
-        if (!sameValue(minePattern[channel], theirPattern[channel])) changes.push({ path: [field, pattern, channel], value: theirPattern[channel] })
+        if (!sameValue(minePattern[channel], theirPattern[channel])) {
+          // Stored zero padding is not a resize. Only a shorter musical pattern
+          // may replace an incoming row; other updates must preserve unreported clicks.
+          const truncate = field === 'stepData' &&
+            ((desired.patternSteps as StudioProject['patternSteps'])?.[Number(pattern)] ?? DEFAULT_PATTERN_STEPS) <
+            (local.patternSteps?.[Number(pattern)] ?? DEFAULT_PATTERN_STEPS)
+          changes.push(...channelChanges(field, pattern, channel, minePattern[channel], theirPattern[channel], truncate))
+        }
       }
     }
   }
@@ -116,7 +149,7 @@ export function remoteChanges(local: StudioProject, server: StudioProject, unsav
 /**
  * A copy of the project with changes applied, sharing everything they don't
  * touch. Applied to the studio's latest state, an incoming change to one
- * channel leaves an edit to another channel in place, even one made a moment ago.
+ * step leaves an edit to another step in place, even one made a moment ago.
  */
 export function withChanges(project: StudioProject, changes: readonly ProjectChange[]): StudioProject {
   const root = { ...project } as unknown as Json
@@ -124,12 +157,10 @@ export function withChanges(project: StudioProject, changes: readonly ProjectCha
     let target = root
     for (const key of path.slice(0, -1)) {
       const child = target[key]
-      target[key] = isObject(child) ? { ...child } : {}
+      target[key] = Array.isArray(child) ? [...child] : isObject(child) ? { ...child } : {}
       target = target[key] as Json
     }
-    const last = path[path.length - 1]
-    if (value === undefined) delete target[last]
-    else target[last] = value
+    applyChanges(root, [{ path, value }])
   }
   return root as unknown as StudioProject
 }
