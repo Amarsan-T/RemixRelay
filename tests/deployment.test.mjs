@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { deploymentEnvironment } from '../scripts/deployment-env.mjs'
 
@@ -127,5 +127,34 @@ test('Vercel uses the guarded build and leaves automatic Git publishing disabled
   assert.equal(pkg.scripts.build, 'node scripts/vercel-build.mjs --local-default')
   assert.equal(config.outputDirectory, 'dist')
   assert.equal(config.git.deploymentEnabled, false)
-  assert.equal(config.rewrites, undefined, 'the standalone audio-test HTML must remain directly accessible')
+  assert.equal(config.framework, 'vite')
+  assert.equal(config.installCommand, 'npm ci')
+  assert.equal(config.builds, undefined, 'legacy builders must not bypass the frontend build')
+  assert.equal(config.routes, undefined, 'no catch-all Python routing')
+  assert.equal(config.functions, undefined, 'Convex is the only active backend')
+  assert.deepEqual(config.rewrites, [{ source: '/((?!api(?:/|$)|assets(?:/|$)).*)', destination: '/index.html' }])
+})
+
+test('SPA fallback covers navigation but cannot swallow API or missing asset requests', () => {
+  const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
+  const fallback = new RegExp(`^${config.rewrites[0].source}$`)
+  for (const path of ['/', '/studio', '/studio/shared-project', '/apiary']) assert.equal(fallback.test(path), true, path)
+  for (const path of ['/api', '/api/main', '/api/aiAssist', '/api/startInquiry', '/assets', '/assets/missing.js']) {
+    assert.equal(fallback.test(path), false, path)
+  }
+  // Vercel serves existing filesystem entries before applying this fallback.
+  const vite = readFileSync(new URL('../vite.config.ts', import.meta.url), 'utf8')
+  assert.match(vite, /audioTest:.*audio-test\.html/)
+})
+
+test('Python experiments and dependencies cannot be auto-discovered as Vercel functions', () => {
+  for (const path of ['api', 'requirements.txt', 'pyproject.toml', 'main.py', 'app.py']) {
+    assert.equal(existsSync(new URL(`../${path}`, import.meta.url)), false, path)
+  }
+  for (const path of ['main.py', 'claude_reader.py', 'requirements.txt']) {
+    assert.equal(existsSync(new URL(`../experiments/python-api/${path}`, import.meta.url)), true, path)
+  }
+  const ignored = readFileSync(new URL('../.vercelignore', import.meta.url), 'utf8').split(/\r?\n/)
+  assert.ok(ignored.includes('/experiments/'))
+  assert.ok(ignored.includes('/backend/'))
 })

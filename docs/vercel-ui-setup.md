@@ -1,5 +1,8 @@
 # Vercel UI setup: stop before Deploy
 
+**Historical setup notes:** use [the current production release guide](vercel-production-release.md)
+for the merged Claude chat application and final frontend deployment fix.
+
 The Convex backend is already deployed and verified on `silent-butterfly-873` from reviewed main `7b6e4f7`. No new backend project, key, or function deployment is needed. Vercel publication and creation of production demo records remain unapproved.
 
 ## One repository prerequisite
