@@ -8,6 +8,11 @@
  * @module
  */
 
+import type * as assistantPrompt from "../assistantPrompt.js";
+import type * as chat from "../chat.js";
+import type * as chatAgent from "../chatAgent.js";
+import type * as chatLimits from "../chatLimits.js";
+import type * as musicContext from "../musicContext.js";
 import type * as projectChanges from "../projectChanges.js";
 import type * as projects from "../projects.js";
 
@@ -18,6 +23,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assistantPrompt: typeof assistantPrompt;
+  chat: typeof chat;
+  chatAgent: typeof chatAgent;
+  chatLimits: typeof chatLimits;
+  musicContext: typeof musicContext;
   projectChanges: typeof projectChanges;
   projects: typeof projects;
 }>;

@@ -8,18 +8,25 @@
     "build": "node scripts/vercel-build.mjs --local-default",
     "build:vercel": "node scripts/vercel-build.mjs",
     "lint": "oxlint",
-    "typecheck": "tsc -b --pretty false",
+    "typecheck": "tsc -b --pretty false && tsc --noEmit -p convex/tsconfig.json && tsc --noEmit -p tsconfig.tests.json",
     "test:e2e": "node tests/e2e/with-local-convex.mjs",
     "test:audio": "node --test tests/audio.test.mjs",
     "test:sync": "node --test tests/sync.test.mjs",
     "test:deployment": "node --test tests/deployment.test.mjs",
-    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs tests/deployment.test.mjs",
-    "preview": "vite preview"
+    "test:assistant": "node --test tests/assistant.test.mjs",
+    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs tests/deployment.test.mjs tests/assistant.test.mjs && npm run test:chat:backend",
+    "preview": "vite preview",
+    "test:chat:backend": "vitest run",
+    "test:chat:dev": "node tests/browser/chat-backend.mjs",
+    "test:chat:browser": "node tests/browser/chat-ui.mjs",
+    "test:studio:browser": "node tests/browser/smoke.mjs",
+    "test:collab:browser": "node tests/browser/collab.mjs"
   },
   "engines": {
     "node": "24.x"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
     "@breezystack/lamejs": "^1.2.7",
     "convex": "^1.48.0",
     "lucide-react": "^1.61.0",
@@ -29,15 +36,18 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.64.1",
+    "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "convex-test": "^0.0.65",
     "oxlint": "^1.88.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vite": "^8.3.4"
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
   },
   "allowScripts": {
     "esbuild@0.27.0": true

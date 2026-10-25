@@ -1,5 +1,5 @@
 import {spawn,spawnSync} from 'node:child_process'
-import {cpSync,mkdtempSync,writeFileSync,symlinkSync} from 'node:fs'
+import {cpSync,mkdtempSync,writeFileSync,symlinkSync,mkdirSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -17,6 +17,9 @@ const sitePort=await freePort()
 // A fresh directory has no .env.local or cloud project selection. Never run
 // this test backend from a developer's configured cloud working directory.
 cpSync(join(root,'convex'),join(fixture,'convex'),{recursive:true})
+// The server's musical context shares the studio's pure preset catalog.
+mkdirSync(join(fixture,'src/audio'),{recursive:true})
+cpSync(join(root,'src/audio/soundPresets.ts'),join(fixture,'src/audio/soundPresets.ts'))
 writeFileSync(join(fixture,'package.json'),JSON.stringify({name:'remixrelay-isolated-browser-test',private:true,type:'module',dependencies:{convex:'*'}}))
 symlinkSync(join(root,'node_modules'),join(fixture,'node_modules'),process.platform==='win32'?'junction':'dir')
 const env={...process.env,CONVEX_AGENT_MODE:'anonymous',CONVEX_DEPLOYMENT:'',CONVEX_DEPLOY_KEY:'',CONVEX_SELF_HOSTED_URL:'',CONVEX_SELF_HOSTED_ADMIN_KEY:'',CONVEX_URL:'',CONVEX_SITE_URL:'',VITE_CONVEX_URL:'',VITE_CONVEX_SITE_URL:''}

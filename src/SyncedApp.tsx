@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../convex/_generated/api'
 import Studio from '../fl_studio_web_daw'
+import { AssistantChat } from './assistant/AssistantChat'
 import { StudioHome } from './studio/StudioHome'
 import { createBlankProject, createDemoProjects, type ProjectEntry } from './studio/projects'
 import { toStored } from './studio/projectSync'
@@ -91,15 +92,19 @@ function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
   }
   if (!sync.initialProject) return <Message text="Opening project..." />
   return (
-    <Studio
-      initialProject={sync.initialProject}
-      projectName={sync.name}
-      onProjectChange={sync.onLocalChange}
-      connectRemote={sync.connectStudio}
-      saveState={sync.saveState}
-      shareUrl={new URL(projectPath(id), window.location.origin).href}
-      onHome={onHome}
-    />
+    <>
+      <Studio
+        initialProject={sync.initialProject}
+        projectName={sync.name}
+        onProjectChange={sync.onLocalChange}
+        connectRemote={sync.connectStudio}
+        saveState={sync.saveState}
+        shareUrl={new URL(projectPath(id), window.location.origin).href}
+        onHome={onHome}
+      />
+      {/* Claude chat, saved per project in Convex. Floats over the studio. */}
+      <AssistantChat projectId={id} projectReady={sync.saveState === 'saved'} />
+    </>
   )
 }
 
