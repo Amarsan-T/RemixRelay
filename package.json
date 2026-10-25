@@ -6,11 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:vercel": "node scripts/vercel-build.mjs",
     "lint": "oxlint",
     "test:audio": "node --test tests/audio.test.mjs",
     "test:sync": "node --test tests/sync.test.mjs",
-    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs",
+    "test:deployment": "node --test tests/deployment.test.mjs",
+    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs tests/deployment.test.mjs",
     "preview": "vite preview"
+  },
+  "engines": {
+    "node": "24.x"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",
