@@ -6,6 +6,15 @@ import { createMixBus } from './mixer'
 import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
+/**
+ * Overall loudness, applied just before the limiter. The mix peaked around
+ * -20 dBFS, far too quiet; this lifts everything evenly to peaks around -5 dBFS.
+ * The limiter (-1 dBFS) still catches anything louder, so it can't clip.
+ * Raise or lower it to taste: +6 is about twice as loud.
+ */
+const MASTER_BOOST_DB = 15
+const PLAYING_GAIN = 0.8 * Tone.dbToGain(MASTER_BOOST_DB)
+
 /** Framework-independent sequencer. Construction does not create an AudioContext. */
 export class AudioEngine {
   private pattern: MusicalPattern
@@ -100,7 +109,7 @@ export class AudioEngine {
     this.syncInstruments()
     // Previews skip the scheduling look-ahead (context.now() includes it) so clicks sound instantly.
     const time = this.context.immediate() + 0.005
-    this.master.gain.setValueAtTime(0.8, time)
+    this.master.gain.setValueAtTime(PLAYING_GAIN, time)
     this.instruments.get(id)?.playStep({ ...preview, muted: latest.muted }, 0, time, 60 / this.pattern.bpm / 4)
   }
 
@@ -256,7 +265,7 @@ export class AudioEngine {
         }, Math.max(0, (time - context.immediate()) * 1000) + 10)
       }, loopEnd))
       const startTime = context.now() + 0.01
-      this.master.gain.setValueAtTime(0.8, startTime)
+      this.master.gain.setValueAtTime(PLAYING_GAIN, startTime)
       this.status = 'playing'
       transport.start(startTime, 0)
       this.emit()

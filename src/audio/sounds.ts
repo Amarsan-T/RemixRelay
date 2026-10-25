@@ -55,7 +55,7 @@ function loadPianoSamples(): Promise<void> {
 
 /** A sampled piano that stays silent, instead of throwing, until its samples are ready. */
 function createPiano(context: Tone.Context): Tone.Sampler {
-  const sampler = new Tone.Sampler({ context, release: 1, volume: 9, urls: Object.fromEntries(pianoBuffers) })
+  const sampler = new Tone.Sampler({ context, release: 1, volume: 15, urls: Object.fromEntries(pianoBuffers) })
   if (pianoBuffers.size < Object.keys(PIANO_SAMPLES).length) {
     void loadPianoSamples()
       .then(() => { if (!sampler.disposed) pianoBuffers.forEach((buffer, note) => sampler.add(note as Tone.Unit.Note, buffer)) })
