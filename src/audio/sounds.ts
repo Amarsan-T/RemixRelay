@@ -140,7 +140,7 @@ export function loadPianoInto(piano: Pick<Tone.Sampler, 'add' | 'disposed'>): Pi
 
 /** A sampled piano that stays silent, instead of throwing, until all its samples are ready. */
 function createPiano(context: Tone.Context): Tone.Sampler {
-  const sampler = new Tone.Sampler({ context, release: 1, volume: 9 })
+  const sampler = new Tone.Sampler({ context, release: 1, volume: 14 })
   const load = loadPianoInto(sampler)
   const play = sampler.triggerAttackRelease.bind(sampler)
   sampler.triggerAttackRelease = ((...args: Parameters<typeof play>) =>
