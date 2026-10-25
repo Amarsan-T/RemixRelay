@@ -9,7 +9,7 @@ const log = (message) => { results.textContent += `${message}\n` }
 
 // Driver buffer sizes differ. Flush the analyser's history using rendered audio
 // time, not an 80 ms wall-clock guess (which may be shorter than one callback).
-async function waitForAudio(context, seconds = 0.12) {
+async function waitForAudio(context, seconds = context.lookAhead + 0.12) {
   const target = context.currentTime + seconds
   const deadline = performance.now() + 2000
   while (context.currentTime < target && performance.now() < deadline) await sleep(12)
@@ -67,7 +67,9 @@ button.addEventListener('click', async () => {
       }
       engine.setPattern({ bpm: 240, loop: true, tracks: [track] })
       await engine.play()
-      const peak = await peakSignal(analyser, 250)
+      // Include the engine's configured startup horizon before measuring audio;
+      // main's 250 ms look-ahead starts the first note after the old probe ended.
+      const peak = await peakSignal(analyser, context.lookAhead * 1000 + 250)
       check(peak > 0.00001, `${voice} produced no audio signal (context ${context.state}, time ${context.currentTime}, transport ${context.transport.state}, ticks ${context.transport.ticks}, master ${engine.master.gain.value})`)
       engine.stop()
       await waitForAudio(context)
@@ -86,7 +88,7 @@ button.addEventListener('click', async () => {
     const trackAnalyser = context.createAnalyser()
     trackAnalyser.fftSize = 2048
     engine.mixInput.connect(trackAnalyser)
-    await sleep(1250)
+    await waitForAudio(context, context.lookAhead + 1.25)
     check(steps.includes(15) && steps.filter((step) => step === 0).length >= 2, 'Playhead must cover all 16 steps and loop')
     const ids = [...engine.events]
     engine.setBpm(180)
@@ -102,7 +104,10 @@ button.addEventListener('click', async () => {
     const mutedPeak = await peakSignal(analyser, 80)
     check(mutedPeak < 0.000001, `Muting every track must silence sustained output (peak ${mutedPeak})`)
     engine.setTrackMuted('bass', false)
-    check(await peakSignal(analyser, 1400) > 0.00001, 'Unmuted bass must become audible again')
+    // This fixture's bass has one onset per bar: include a full bar after the
+    // scheduled unmute, rather than ending the probe before that next onset.
+    const barMs = 4 * 60_000 / engine.getPattern().bpm
+    check(await peakSignal(analyser, context.lookAhead * 1000 + barMs + 250) > 0.00001, 'Unmuted bass must become audible again')
     unsubscribe()
     trackAnalyser.disconnect()
     engine.stop()
@@ -110,7 +115,7 @@ button.addEventListener('click', async () => {
 
     engine.setPattern({ ...createDemoPattern(), bpm: 240, loop: false })
     await engine.play()
-    await sleep(1250)
+    await waitForAudio(context, context.lookAhead + 1.25)
     check(engine.getState().status === 'stopped' && engine.getState().step === null, 'One-shot playback must stop and rewind')
     check(await peakSignal(analyser, 40) < 0.000001, 'One-shot playback must silence note tails')
     engine.dispose()
