@@ -14,7 +14,13 @@ export default defineSchema({
     updatedAt: v.number(),
     /** Browser tab (or 'assistant') that made the last save. */
     lastClientId: v.optional(v.string()),
-  }).index('by_updatedAt', ['updatedAt']),
+    /** Optional for backwards compatibility. No public ownership claiming. */
+    managementKeyHash: v.optional(v.string()),
+    deletedAt: v.optional(v.number()),
+    /** Fences saves queued before deletion, including after a restore. */
+    lifecycle: v.optional(v.number()),
+  }).index('by_updatedAt', ['updatedAt'])
+    .index('by_deletedAt_updatedAt', ['deletedAt', 'updatedAt']),
 
   /** One message in a project's Claude chat (convex/chat.ts). */
   chatMessages: defineTable({
@@ -35,12 +41,14 @@ export default defineSchema({
     attempt: v.optional(v.number()),
     /** An action claims its attempt once before making a paid API call. */
     claimedAttempt: v.optional(v.number()),
+    projectLifecycle: v.optional(v.number()),
     model: v.optional(v.string()),
     inputTokens: v.optional(v.number()),
     outputTokens: v.optional(v.number()),
   })
     .index('by_project', ['projectId', 'createdAt'])
     .index('by_project_request', ['projectId', 'requestId'])
+    .index('by_project_status', ['projectId', 'status'])
     .index('by_started', ['startedAt']),
 
   /** Append-only request accounting: retries must not erase earlier API usage. */

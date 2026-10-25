@@ -9,6 +9,8 @@ import { toStored } from './studio/projectSync'
 import { useProjectSync } from './studio/useProjectSync'
 import type { StudioProject } from './studio/types'
 import { AeroBackground, GlassButton, GlassPanel } from './ui/Glass'
+import { credentialFor, finishCredential, newCredential, rememberCredential, useManagementCredentials } from './studio/projectManagement'
+import type { Id } from '../convex/_generated/dataModel'
 
 // The app with projects saved in Convex. A project's link (?project=<id>)
 // opens it directly, and everyone with the link edits the same project live.
@@ -21,11 +23,17 @@ function SyncedApp() {
   const [creating, setCreating] = useState(false)
   const [creationError, setCreationError] = useState<string | null>(null)
   const [seedError, setSeedError] = useState(false)
+  const deleted = useManagementCredentials()
+  const [lastDeleted, setLastDeleted] = useState<{ id: string; name: string; lifecycle: number }>()
   // Only the home screen needs every project; skipping it in the studio keeps
   // each save from re-sending the whole list to every open browser.
   const projects = useQuery(api.projects.list, openId ? 'skip' : {})
+  const hasAny = useQuery(api.projects.hasAny, !openId && projects?.length === 0 ? {} : 'skip')
   const create = useMutation(api.projects.create)
   const seedDemos = useMutation(api.projects.seedDemos)
+  const rename = useMutation(api.projects.rename)
+  const remove = useMutation(api.projects.remove)
+  const restore = useMutation(api.projects.restore)
 
   // Back and Forward move between the home screen and projects.
   useEffect(() => {
@@ -45,7 +53,7 @@ function SyncedApp() {
   // A brand-new database starts with the demo projects.
   const seeded = useRef(false)
   useEffect(() => {
-    if (projects?.length !== 0 || seeded.current) return
+    if (projects?.length !== 0 || hasAny !== false || seeded.current) return
     seeded.current = true
     const demos = createDemoProjects().map(({ name, color, updatedAt, project }) => ({ name, color, updatedAt, data: toStored(project) }))
     seedDemos({ projects: demos }).then(() => setSeedError(false)).catch((error: unknown) => {
@@ -53,30 +61,56 @@ function SyncedApp() {
       setSeedError(true)
       console.warn('Adding the demo projects failed:', error)
     })
-  }, [projects, seedDemos])
+  }, [projects, seedDemos, hasAny])
 
   if (openId) return <ProjectSession key={openId} id={openId} onHome={goHome} />
-  if (!projects?.length) return <Message text={seedError ? 'Demo projects could not be created. Check your connection and retry.' : 'Loading projects...'} onRetry={seedError ? () => window.location.reload() : undefined} />
+  if (projects === undefined) return <Message text="Loading projects..." />
 
   const entries: ProjectEntry[] = projects.map((doc) => ({
     id: doc._id, name: doc.name, color: doc.color, updatedAt: doc.updatedAt, project: doc.data as StudioProject,
+    version: doc.version, lifecycle: doc.lifecycle ?? 0, canManage: !!credentialFor(doc._id),
   }))
   return (
     <StudioHome
       projects={entries}
       onOpenProject={openProject}
       creating={creating}
-      error={creationError}
+      error={creationError ?? (seedError ? 'Demo projects could not be created. You can still create a new project.' : null)}
+      onRenameProject={async (entry, name) => {
+        await rename({ id: entry.id as Id<'projects'>, key: credentialFor(entry.id)?.key ?? '', name, expectedName: entry.name })
+      }}
+      onDeleteProject={async entry => {
+        const credential = credentialFor(entry.id)
+        await remove({ id: entry.id as Id<'projects'>, key: credential?.key ?? '', expectedName: entry.name,
+          expectedVersion: entry.version!, expectedLifecycle: entry.lifecycle ?? 0 })
+        const recovery = { id: entry.id, name: entry.name, lifecycle: (entry.lifecycle ?? 0) + 1 }
+        setLastDeleted(recovery)
+        // Even if storage fills now, the in-memory Undo and original key remain.
+        try { rememberCredential(entry.id, { key: credential!.key, deletedName: entry.name, deletedLifecycle: recovery.lifecycle }) }
+        catch { setCreationError('The project is retained, but this browser could not remember recovery. Use Undo before leaving.') }
+      }}
+      deletedProjects={lastDeleted && !deleted.some(entry => entry.id === lastDeleted.id) ? [lastDeleted, ...deleted] : deleted}
+      lastDeletedId={lastDeleted?.id}
+      onRestoreProject={async id => {
+        const recovery = deleted.find(entry => entry.id === id) ?? (lastDeleted?.id === id ? lastDeleted : undefined)
+        const credential = credentialFor(id)
+        if (!recovery || !credential) throw new Error('Management access unavailable')
+        await restore({ id: id as Id<'projects'>, key: credential.key, expectedLifecycle: recovery.lifecycle })
+        rememberCredential(id, { key: credential.key })
+        if (lastDeleted?.id === id) setLastDeleted(undefined)
+      }}
       onNewProject={() => {
         if (creating) return
         setCreating(true)
         setCreationError(null)
         const entry = createBlankProject(entries)
-        create({ name: entry.name, color: entry.color, data: toStored(entry.project) })
-          .then(openProject)
-          .catch((error: unknown) => {
-            setCreationError('The project could not be created. Check your connection and try again.')
-            console.warn('Creating the project failed:', error)
+        newCredential().then(async credential => {
+          const id = await create({ name: entry.name, color: entry.color, data: toStored(entry.project), managementKeyHash: credential.hash })
+          finishCredential(id, credential.key)
+          openProject(id)
+        })
+          .catch(() => {
+            setCreationError('The project could not be opened. Check your connection and allow browser storage before trying again. Existing projects were preserved.')
           })
           .finally(() => setCreating(false))
       }}
@@ -88,7 +122,13 @@ function SyncedApp() {
 function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
   const sync = useProjectSync(id)
   if (sync.status === 'missing') {
-    return <Message text="This project doesn't exist. The link may be wrong, or the project was deleted." onHome={onHome} />
+    return <Message text="This project doesn't exist or this session is out of date. The link may be wrong, or the project was deleted. Reopen restored projects from the dashboard."
+      onHome={onHome} onRecover={sync.initialProject ? () => {
+        const url = URL.createObjectURL(new Blob([JSON.stringify(sync.getRecoveryProject(), null, 2)], { type: 'application/json' }))
+        const link = document.createElement('a')
+        link.href = url; link.download = 'remixrelay-recovery.json'; link.click()
+        setTimeout(() => URL.revokeObjectURL(url), 1000)
+      } : undefined} />
   }
   if (!sync.initialProject) return <Message text="Opening project..." />
   return (
@@ -108,11 +148,12 @@ function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
   )
 }
 
-function Message({ text, onHome, onRetry }: { text: string; onHome?: () => void; onRetry?: () => void }) {
+function Message({ text, onHome, onRetry, onRecover }: { text: string; onHome?: () => void; onRetry?: () => void; onRecover?: () => void }) {
   return (
     <AeroBackground className="grid min-h-dvh place-items-center p-6 text-aero-ink">
     <GlassPanel className="flex flex-col items-center gap-4 rounded-2xl p-8 text-center text-sm" role="status">
       <p>{text}</p>
+      {onRecover && <GlassButton onClick={onRecover} className="px-4 py-2 text-xs">Download recovery copy</GlassButton>}
       {onHome && (
         <GlassButton onClick={onHome} className="px-4 py-2 text-xs">
           Back to projects
