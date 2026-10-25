@@ -193,6 +193,23 @@ def claude_inquire(midi_path, inquiry="", max_turns=10):
     final_text = "\n".join(b.text for b in response.content if b.type == "text")
     print("RESULT:\n", final_text)
     return final_text, messages
-claude_inquire("../Example/MIDI_sample.mid", inquiry="length")
+# claude_inquire("../Example/MIDI_sample.mid", inquiry="length")
+
+def beginInquiry(inquiry):
+    messages = []
+    messages.append({"role": "user", "content": inquiry})
+    response = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        messages=messages,
+        system="""You are a introductory chat bot to an online music synthesizer, 
+                which includes features like a piano roll and a step synthesizer. 
+                Given the user inquiry about what music they would like to make, 
+                make a suggestion for them to start with either the piano roll
+                or the step synthesizer, and why."""
+    )
+    answer = response.content[0].text
+
+    return {"response": answer}
 
 #claude_inquire("./Example/MIDI_sample.mid", "sample.json")
