@@ -6,15 +6,5 @@
   "outputDirectory": "dist",
   "git": {
     "deploymentEnabled": false
-  },
-  "rewrites": [
-    {
-      "source": "/startInquiry",
-      "destination": "/backend/main.py"
-    },
-    {
-      "source": "/aiAssist",
-      "destination": "/backend/main.py"
-    }
-  ]
+  }
 }

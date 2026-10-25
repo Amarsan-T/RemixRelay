@@ -8,11 +8,11 @@ class Inquiry(BaseModel):
     chat: str #input to pass to model
     hist: list | None = None #previous conversation history to pass to model
     
-@app.post('/startInquiry')
+@app.post('/api/startInquiry')
 async def startInquiry(inquiry: Inquiry):
    return claude_reader.beginInquiry(inquiry.chat)
 
-@app.post('/aiAssist')
+@app.post('/api/aiAssist')
 async def AI_assist(inquiry: Inquiry):
    return claude_reader.AI_assist(inquiry.chat, inquiry.hist)
 
