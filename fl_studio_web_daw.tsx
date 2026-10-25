@@ -11,6 +11,12 @@ import { MAX_PATTERNS, patternLength, patternNumbers, patternStepAt } from './sr
 import { PatternLengthControl } from './src/studio/PatternLengthControl';
 import { StudioPianoRoll } from './src/studio/StudioPianoRoll';
 import { StudioPlaylist } from './src/studio/StudioPlaylist';
+import { MetroBackdrop } from './src/ui/Metro';
+
+/** Shown huge and faint behind each view (Metro style). */
+const VIEW_TITLES: Record<string, string> = {
+  playlist: 'playlist', channelRack: 'channel rack', pianoRoll: 'piano roll', mixer: 'mixer',
+};
 import type { MixerParam, StepData, StudioChannel, StudioProject } from './src/studio/types';
 import type { ProjectChange } from './src/studio/projectSync';
 
@@ -509,18 +515,18 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
       {/* ==================================================== */}
       {/* 2. SUB-BAR: Presets, Quick Tools, and Tab Switchers  */}
       {/* ==================================================== */}
-      <div className="flex items-center justify-between px-4 py-1.5 bg-[#1b1e22] border-b border-zinc-800 text-xs">
+      <div className="aero-glass z-10 flex items-center justify-between px-4 py-2 text-xs text-aero-ink rounded-none border-x-0 border-t-0">
         {/* Preset Selector */}
         <div className="flex items-center gap-2">
-          <span className="text-zinc-400 font-mono text-[11px] flex items-center gap-1">
-            <Zap className="w-3 h-3 text-amber-400" /> Presets:
+          <span className="text-aero-ink-soft text-[11px] font-semibold flex items-center gap-1">
+            <Zap className="w-3 h-3 text-amber-500" /> Presets:
           </span>
           <div className="flex gap-1">
             {Object.keys(PRESETS).map((pName) => (
               <button
                 key={pName}
                 onClick={() => loadPreset(pName)}
-                className="px-2 py-0.5 rounded bg-zinc-800/80 hover:bg-zinc-700 text-zinc-300 font-medium text-[11px] border border-zinc-700/60 transition"
+                className="aero-pill aero-frost px-2.5 py-0.5 text-[11px]"
               >
                 {pName}
               </button>
@@ -532,56 +538,44 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
         <div className="flex items-center gap-2">
           <button
             onClick={randomizePattern}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-orange-400 border border-zinc-700/60 text-[11px] transition"
+            className="aero-pill aero-aqua px-2.5 py-0.5 text-[11px]"
           >
             <Sparkles className="w-3 h-3" /> Randomize
           </button>
           <button
             onClick={clearCurrentPattern}
-            className="flex items-center gap-1 px-2 py-0.5 rounded bg-zinc-800 hover:bg-red-950/60 text-zinc-400 hover:text-red-400 border border-zinc-700/60 text-[11px] transition"
+            className="aero-pill aero-frost px-2.5 py-0.5 text-[11px] hover:text-red-600"
           >
             <Trash2 className="w-3 h-3" /> Clear
           </button>
 
           {/* Layout Tab Switchers */}
-          <div className="flex bg-zinc-950 p-0.5 rounded-md border border-zinc-700/60 ml-2">
+          <div className="flex items-end gap-5 ml-5 pb-1">
             <button
               onClick={() => setActiveTab('playlist')}
-              className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
-                activeTab === 'playlist'
-                  ? 'bg-zinc-800 text-orange-400 shadow-sm border border-zinc-700/80'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              aria-pressed={activeTab === 'playlist'}
+              className="metro-pivot flex items-center gap-1.5"
             >
               <ListMusic className="w-3.5 h-3.5" /> Playlist
             </button>
             <button
               onClick={() => setActiveTab('channelRack')}
-              className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
-                activeTab === 'channelRack'
-                  ? 'bg-zinc-800 text-orange-400 shadow-sm border border-zinc-700/80'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              aria-pressed={activeTab === 'channelRack'}
+              className="metro-pivot flex items-center gap-1.5"
             >
               <Grid className="w-3.5 h-3.5" /> Channel Rack
             </button>
             <button
               onClick={() => setActiveTab('pianoRoll')}
-              className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
-                activeTab === 'pianoRoll'
-                  ? 'bg-zinc-800 text-orange-400 shadow-sm border border-zinc-700/80'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              aria-pressed={activeTab === 'pianoRoll'}
+              className="metro-pivot flex items-center gap-1.5"
             >
               <Music className="w-3.5 h-3.5" /> Piano Roll
             </button>
             <button
               onClick={() => setActiveTab('mixer')}
-              className={`flex items-center gap-1 px-3 py-1 rounded text-[11px] font-semibold transition ${
-                activeTab === 'mixer'
-                  ? 'bg-zinc-800 text-orange-400 shadow-sm border border-zinc-700/80'
-                  : 'text-zinc-400 hover:text-zinc-200'
-              }`}
+              aria-pressed={activeTab === 'mixer'}
+              className="metro-pivot flex items-center gap-1.5"
             >
               <Sliders className="w-3.5 h-3.5" /> Mixer
             </button>
@@ -592,16 +586,17 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
       {/* ==================================================== */}
       {/* 3. MAIN WORKSPACE AREA                              */}
       {/* ==================================================== */}
-      <main className="flex-1 bg-[#16181b] overflow-auto relative p-3 flex flex-col justify-start">
+      <main className="flex-1 overflow-auto relative isolate p-4 flex flex-col justify-start">
+        <MetroBackdrop title={VIEW_TITLES[activeTab] ?? ''} />
         
         {/* VIEW 1: CHANNEL RACK & STEP SEQUENCER */}
         {activeTab === 'channelRack' && (
-          <div className="max-w-6xl w-full mx-auto bg-[#202428] rounded-lg border border-zinc-700/70 shadow-2xl overflow-hidden">
+          <div className="aero-panel max-w-6xl w-full mx-auto overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-4 py-2 bg-gradient-to-r from-zinc-800 to-zinc-850 border-b border-zinc-700/70">
+            <div className="aero-panel-header flex items-center justify-between px-4 py-2">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
-                <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
+                <h2 className="text-sm font-semibold tracking-wide text-white">
                   Channel Rack • Pattern {activePattern}
                 </h2>
               </div>
@@ -619,7 +614,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             </div>
 
             {/* Channels & Step Grid */}
-            <div className="divide-y divide-zinc-800/80">
+            <div className="divide-y divide-white/5">
               {channels.map((channel) => {
                 const currentPatternSteps = stepData[activePattern]?.[channel.id] || new Array(patternSteps).fill(0);
                 const isSelected = selectedChannelId === channel.id;
@@ -629,24 +624,20 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                     key={channel.id}
                     onClick={() => setSelectedChannelId(channel.id)}
                     className={`flex items-center px-3 py-1.5 transition-colors ${
-                      isSelected ? 'bg-zinc-700/25' : 'hover:bg-zinc-800/40'
+                      isSelected ? 'bg-sky-400/10' : 'hover:bg-white/5'
                     }`}
                   >
                     {/* Left: Channel Controls (Pan, Vol, Mute, Solo) */}
                     <div className="flex items-center gap-2 w-72 shrink-0">
                       {/* Selection LED */}
                       <div className={`w-1.5 h-6 rounded-full transition-all ${
-                        isSelected ? 'bg-orange-500 shadow-[0_0_8px_#f97316]' : 'bg-transparent'
+                        isSelected ? 'bg-aero-glow shadow-[0_0_8px_#7fe3ff]' : 'bg-transparent'
                       }`} />
 
                       {/* Mute & Solo buttons */}
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleMute(channel.id); }}
-                        className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center border transition ${
-                          channel.muted
-                            ? 'bg-red-500/80 text-white border-red-400'
-                            : 'bg-emerald-600/30 text-emerald-400 border-emerald-500/40 hover:bg-emerald-600/60'
-                        }`}
+                        className={`w-5 h-5 text-[9px] ${channel.muted ? 'aero-pill aero-ruby' : 'aero-pill aero-smoke'}`}
                         title="Mute Channel"
                         aria-label={`Mute ${channel.name}`}
                         aria-pressed={channel.muted}
@@ -655,11 +646,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                       </button>
                       <button
                         onClick={(e) => { e.stopPropagation(); toggleSolo(channel.id); }}
-                        className={`w-4 h-4 rounded-full text-[9px] font-bold flex items-center justify-center border transition ${
-                          channel.solo
-                            ? 'bg-amber-400 text-zinc-950 border-amber-300 font-black shadow-[0_0_6px_#f59e0b]'
-                            : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:bg-zinc-700'
-                        }`}
+                        className={`w-5 h-5 text-[9px] ${channel.solo ? 'aero-pill aero-amber' : 'aero-pill aero-smoke'}`}
                         title="Solo Channel"
                         aria-label={`Solo ${channel.name}`}
                         aria-pressed={channel.solo}
@@ -669,7 +656,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
 
                       {/* Pan Knob Slider */}
                       <div className="flex flex-col items-center" title={`Pan: ${channel.pan}`}>
-                        <span className="text-[8px] text-zinc-500 font-mono leading-none">PAN</span>
+                        <span className="text-[8px] text-sky-100/60 leading-none">PAN</span>
                         <input
                           type="range"
                           min="-1"
@@ -682,13 +669,13 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                             const val = parseFloat(e.target.value);
                             setChannels(prev => prev.map(c => c.id === channel.id ? { ...c, pan: val } : c));
                           }}
-                          className="w-10 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-orange-400"
+                          className="w-10 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-sky-400"
                         />
                       </div>
 
                       {/* Volume Slider */}
                       <div className="flex flex-col items-center" title={`Vol: ${Math.round(channel.vol * 100)}%`}>
-                        <span className="text-[8px] text-zinc-500 font-mono leading-none">VOL</span>
+                        <span className="text-[8px] text-sky-100/60 leading-none">VOL</span>
                         <input
                           type="range"
                           min="0"
@@ -712,13 +699,13 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                           previewChannelSound(channel);
                           setSelectedChannelId(channel.id);
                         }}
-                        className="flex-1 text-left px-2.5 py-1 rounded bg-[#2b3035] hover:bg-[#343a40] border border-zinc-700/80 shadow-sm flex items-center justify-between group"
+                        className="aero-pill aero-smoke flex-1 justify-between px-3 py-1 text-left group"
                       >
-                        <span className="text-xs font-semibold text-zinc-200 group-hover:text-orange-400 transition truncate">
+                        <span className="min-w-0 text-xs font-semibold text-white group-hover:text-aero-glow transition truncate">
                           {channel.name}
                         </span>
                         <span
-                          className="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold"
+                          className="shrink-0 whitespace-nowrap text-[9px] px-1.5 py-0.2 rounded font-mono font-bold"
                           style={{ backgroundColor: `${channel.color}33`, color: channel.color }}
                         >
                           Trk {channel.mixerTrack}
@@ -744,16 +731,16 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                             aria-pressed={isStepActive}
                             className={`h-9 flex-1 min-w-[28px] max-w-[44px] rounded-[3px] border transition-all duration-75 relative flex items-center justify-center ${
                               isStepActive
-                                ? 'bg-gradient-to-b from-orange-500 to-amber-600 border-orange-400 shadow-[0_0_10px_rgba(249,115,22,0.4)]'
+                                ? 'bg-gradient-to-b from-[#6fd3ff] to-[#0a84d6] border-[#7fe3ff] shadow-[0_0_10px_rgba(30,167,242,0.5)]'
                                 : isEvenGroup
                                 ? 'bg-[#32373d] hover:bg-[#3b4148] border-zinc-700/80'
                                 : 'bg-[#25292e] hover:bg-[#2d3238] border-zinc-800'
-                            } ${isCurrentPlayStep ? 'ring-2 ring-emerald-400 ring-offset-1 ring-offset-[#202428] scale-[1.05]' : ''}`}
+                            } ${isCurrentPlayStep ? 'ring-2 ring-lime-300 ring-offset-1 ring-offset-[#14212e] scale-[1.05]' : ''}`}
                           >
                             {/* Inner LED highlight notch */}
                             <div className={`w-3/4 h-1.5 rounded-full ${
                               isStepActive 
-                                ? 'bg-amber-200/90 shadow-[0_0_4px_#fff]' 
+                                ? 'bg-white/85 shadow-[0_0_4px_#fff]' 
                                 : 'bg-black/25'
                             }`} />
                           </button>
@@ -798,12 +785,12 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
 
         {/* VIEW 3: MULTI-CHANNEL MIXER & EFFECTS */}
         {activeTab === 'mixer' && (
-          <div className="max-w-6xl w-full mx-auto bg-[#202428] rounded-lg border border-zinc-700/70 shadow-2xl p-4 flex flex-col gap-4">
+          <div className="aero-panel max-w-6xl w-full mx-auto p-4 flex flex-col gap-4">
             {/* Mixer Header */}
-            <div className="flex items-center justify-between pb-2 border-b border-zinc-700/80">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <div className="flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-orange-400" />
-                <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">
+                <Sliders className="w-4 h-4 text-aero-glow" />
+                <h2 className="text-sm font-semibold tracking-wide text-white">
                   Master & Insert Mixer (6 Tracks + Master Bus)
                 </h2>
               </div>
@@ -822,14 +809,14 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                     key={track.id}
                     className={`rounded-lg border p-2.5 flex flex-col items-center gap-2 relative ${
                       isMaster 
-                        ? 'bg-[#181a1d] border-amber-500/50 shadow-md' 
-                        : 'bg-[#23272c] border-zinc-700/80'
+                        ? 'aero-strip !border-aero-glow/60 shadow-[0_0_14px_rgba(127,227,255,0.25)]' 
+                        : 'aero-strip'
                     }`}
                   >
                     {/* Track Title */}
-                    <div className="w-full text-center pb-1 border-b border-zinc-700/60">
+                    <div className="w-full text-center pb-1 border-b border-white/10">
                       <span className={`text-[11px] font-mono font-bold truncate block ${
-                        isMaster ? 'text-amber-400' : 'text-zinc-200'
+                        isMaster ? 'text-aero-glow' : 'text-white'
                       }`}>
                         {track.name}
                       </span>
@@ -839,7 +826,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                     </div>
 
                     {/* Quick FX Knobs per Track */}
-                    <div className="w-full space-y-1 bg-zinc-900/60 p-1.5 rounded border border-zinc-800">
+                    <div className="w-full space-y-1 bg-black/30 p-1.5 rounded-lg border border-white/10">
                       {/* Lowpass EQ Filter */}
                       <div className="flex items-center justify-between text-[9px] font-mono text-zinc-400">
                         <span>FILTER</span>
@@ -896,7 +883,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                         step="0.05"
                         value={track.pan}
                         onChange={(e) => handleMixerParam(track.id, 'pan', parseFloat(e.target.value))}
-                        className="w-full h-1 bg-zinc-700 rounded appearance-none cursor-pointer accent-orange-400"
+                        className="w-full h-1 bg-zinc-700 rounded appearance-none cursor-pointer accent-sky-400"
                         title={`Pan: ${track.pan}`}
                       />
                       <span className="text-[8px] font-mono text-zinc-500">R</span>
@@ -923,11 +910,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                         onClick={() => handleMixerParam(track.id, 'mute', !track.mute)}
                         aria-label={`Mute mixer ${track.name}`}
                         aria-pressed={track.mute}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition ${
-                          track.mute
-                            ? 'bg-red-500 text-white'
-                            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        }`}
+                        className={`px-2.5 py-0.5 text-[10px] ${track.mute ? 'aero-pill aero-ruby' : 'aero-pill aero-smoke'}`}
                       >
                         M
                       </button>
@@ -936,11 +919,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                           const newSolo = !track.solo;
                           handleMixerParam(track.id, 'solo', newSolo);
                         }}
-                        className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition ${
-                          track.solo
-                            ? 'bg-amber-400 text-black shadow'
-                            : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
-                        }`}
+                        className={`px-2.5 py-0.5 text-[10px] ${track.solo ? 'aero-pill aero-amber' : 'aero-pill aero-smoke'}`}
                       >
                         S
                       </button>
@@ -956,7 +935,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
       {/* ==================================================== */}
       {/* 4. BOTTOM STATUS BAR & SYSTEM DIAGNOSTICS            */}
       {/* ==================================================== */}
-      <footer className="px-4 py-1.5 bg-[#1b1e22] border-t border-zinc-800 text-[11px] font-mono text-zinc-400 flex items-center justify-between">
+      <footer className="aero-glass-dark px-4 py-1.5 text-[11px] text-sky-100/70 flex items-center justify-between border-x-0 border-b-0">
         <div className="flex items-center gap-3">
           <span className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -967,7 +946,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
           <span className="text-zinc-600">|</span>
           <span>{loop ? 'Looping' : 'One bar'}</span>
         </div>
-        <div className="text-zinc-500">
+        <div className="text-sky-100/50">
           RemixRelay • Collaborative music studio
         </div>
       </footer>

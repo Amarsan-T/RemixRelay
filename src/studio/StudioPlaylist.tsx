@@ -34,11 +34,11 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
   }))
 
   return (
-    <div className="max-w-6xl w-full mx-auto bg-[#202428] rounded-lg border border-zinc-700/70 shadow-2xl overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-gradient-to-r from-zinc-800 to-zinc-850 border-b border-zinc-700/70">
+    <div className="aero-panel max-w-6xl w-full mx-auto overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 aero-panel-header">
         <div className="flex items-center gap-2">
-          <ListMusic className="w-4 h-4 text-orange-400" />
-          <h2 className="text-xs font-mono font-bold tracking-wider text-zinc-200 uppercase">Playlist • Song</h2>
+          <ListMusic className="w-4 h-4 text-aero-glow" />
+          <h2 className="text-sm font-semibold tracking-wide text-white">Playlist • Song</h2>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-mono text-zinc-400">
           <label className="flex items-center gap-1.5">
@@ -50,7 +50,7 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
                 // Drop clips that would start past the new end.
                 setSong((s) => ({ ...s, bars, clips: s.clips.filter((c) => c.startBar < bars) }))
               }}
-              className="bg-zinc-900 text-orange-400 font-semibold px-2 py-1 rounded border border-zinc-700 outline-none"
+              className="aero-lcd font-semibold px-2.5 py-1 rounded-full outline-none"
             >
               {SONG_LENGTHS.map((b) => <option key={b} value={b}>{b} bars</option>)}
             </select>
@@ -59,14 +59,14 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
             type="button"
             disabled={song.trackCount >= MAX_TRACKS}
             onClick={() => setSong((s) => ({ ...s, trackCount: s.trackCount + 1 }))}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700/60"
+            className="aero-pill aero-smoke px-2.5 py-1"
           >
             <Plus className="w-3 h-3" /> Track
           </button>
           <button
             type="button"
             onClick={() => setSong((s) => ({ ...s, clips: [] }))}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-zinc-800 hover:bg-red-950/60 text-zinc-400 hover:text-red-400 border border-zinc-700/60"
+            className="aero-pill aero-smoke px-2.5 py-1 hover:!text-red-300"
           >
             <Trash2 className="w-3 h-3" /> Clear song
           </button>
@@ -87,7 +87,7 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
                 onDoubleClick={() => onOpenPattern(n)}
                 title="Click to place this pattern, double-click to edit it"
                 className={`flex flex-1 items-center gap-2 rounded border px-2 py-1.5 text-left text-xs font-mono transition ${
-                  selected ? 'border-orange-400 bg-zinc-800 text-zinc-100' : 'border-zinc-700/70 text-zinc-400 hover:bg-zinc-800/60'
+                  selected ? 'border-aero-glow bg-sky-400/15 text-white shadow-[0_0_10px_rgba(127,227,255,0.25)]' : 'border-white/10 text-sky-100/70 hover:bg-white/5'
                 }`}
               >
                 <span className="h-4 w-1.5 shrink-0 rounded-full" style={{ background: p.color }} />
@@ -99,7 +99,7 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
             type="button"
             onClick={onNewPattern}
             disabled={patterns.length >= MAX_PATTERNS}
-            className="flex shrink-0 items-center justify-center gap-1 rounded border border-dashed border-zinc-700 px-2 py-1.5 text-xs font-mono text-zinc-400 hover:text-orange-400 disabled:opacity-40"
+            className="flex shrink-0 items-center justify-center gap-1 rounded border border-dashed border-sky-200/30 px-2 py-1.5 text-xs text-sky-100/70 hover:text-white disabled:opacity-40"
           >
             <Plus className="w-3 h-3" /> New pattern
           </button>
