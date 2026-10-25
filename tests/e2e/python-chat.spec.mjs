@@ -130,6 +130,25 @@ test('React to local Convex to Python HTTP preserves chat and memory after refre
     await expect(coach).toContainText('All done!')
     await panel.getByRole('button',{name:'Hide highlights'}).click()
     await expect(coach).toHaveCount(0)
+
+    // Reliability: a make/create answer that only described steps in prose offers a one-click follow-up,
+    // which comes back as applicable suggestions (block first, alternate tag, steps list, short channel name).
+    await page.getByLabel('Message Claude').fill('Make a kick pattern for pattern 2, prose only please.')
+    await page.getByLabel('Send message').click()
+    await expect(panel).toContainText('Put the kick on steps 1, 5, 9 and 13 of pattern 2')
+    const followUp=panel.getByRole('button',{name:'Get notes I can apply'})
+    await expect(followUp).toBeVisible()
+    const kickBefore=JSON.stringify((await project()).stepData[2]?.kick ?? [])
+    await followUp.click()
+    await expect(panel).toContainText('Here are those kick steps, ready to apply.')
+    await expect(panel).toContainText('4 notes to try: Kick pulse')
+    await expect(followUp).toHaveCount(0)
+    await expect(coach).toContainText('0 of 4 done')
+    await expect(page.getByRole('button',{name:'Channel Rack',exact:true})).toHaveAttribute('aria-pressed','true')
+    expect(JSON.stringify((await project()).stepData[2]?.kick ?? [])).toBe(kickBefore)
+    await coach.getByRole('button',{name:/Apply all \(4\)/}).click()
+    await coach.getByRole('button',{name:'Yes, apply'}).click()
+    await expect.poll(async()=>{const kick=(await project()).stepData[2].kick;return [0,4,8,12].map(step=>kick[step])}).toEqual([1,1,1,1])
   }finally{
     await second.close()
     child.kill()

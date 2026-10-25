@@ -91,3 +91,15 @@ export function isInView(item: ResolvedSuggestion, view: StudioView, pattern: nu
 export function viewFor(item: ResolvedSuggestion): { view: StudioView; pattern: number; channelId: string } {
   return { view: item.kind === 'melodic' ? 'pianoRoll' : 'channelRack', pattern: item.pattern, channelId: item.channelId }
 }
+
+/**
+ * Does this question ask Claude to make or change specific music? Used only to
+ * offer a follow-up button when a reply came back without notes to apply.
+ */
+export function asksForNotes(question: string): boolean {
+  return /\b(make|create|compose|write|generate|build|produce|program|add|give me|suggest|come up with|help me (make|write|create))\b/i.test(question) &&
+    /\b(beat|drums?|kick|snare|hats?|hi-?hats?|melod(y|ies)|bass(line)?|chords?|progression|notes?|riff|hook|groove|loop|pattern|song|track|music|tune|arpeggio|rhythm)\b/i.test(question)
+}
+
+/** The follow-up sent when the user asks for a prose-only answer as notes they can apply. */
+export const NOTES_FOLLOW_UP = 'Please give the exact notes and steps from your last answer as note suggestions I can Show and Apply.'

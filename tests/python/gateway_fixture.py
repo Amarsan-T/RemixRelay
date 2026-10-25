@@ -21,6 +21,14 @@ async def provider(request):
                 {"action": "add", "channel": "Kick 808", "pattern": 1, "step": 1, "why": "A soft pulse"},
                 {"action": "add", "channel": "Missing Synth", "pattern": 1, "step": 1, "note": "C4"},
             ]}) + "</note-suggestions>"
+    if "prose only" in latest[1]["text"].lower():
+        # The reliability bug: exact steps described in prose, with no block to apply.
+        text = "Put the kick on steps 1, 5, 9 and 13 of pattern 2 for a steady pulse."
+    if "note suggestions i can show and apply" in latest[1]["text"].lower():
+        # The follow-up returns the same idea in the natural block-first form.
+        text = "<note_suggestions>" + json.dumps({"summary": "Kick pulse", "items": [
+            {"action": "add", "channel": "Kick", "pattern": 2, "steps": [1, 5, 9, 13], "note": "C1", "why": "A steady pulse"},
+        ]}) + "</note_suggestions>\nHere are those kick steps, ready to apply."
     return httpx.Response(200, json={"model": "local-fixture-not-Claude", "stop_reason": "end_turn",
         "content": [{"type": "text", "text": text}], "usage": {"input_tokens": 50, "output_tokens": 15}})
 
