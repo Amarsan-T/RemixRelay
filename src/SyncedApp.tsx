@@ -7,6 +7,7 @@ import { createBlankProject, createDemoProjects, type ProjectEntry } from './stu
 import { toStored } from './studio/projectSync'
 import { useProjectSync } from './studio/useProjectSync'
 import type { StudioProject } from './studio/types'
+import { AeroBackground, GlassButton, GlassPanel } from './ui/Glass'
 
 // The app with projects saved in Convex. A project's link (?project=<id>)
 // opens it directly, and everyone with the link edits the same project live.
@@ -16,6 +17,9 @@ const projectPath = (id: string) => `${window.location.pathname}?project=${encod
 
 function SyncedApp() {
   const [openId, setOpenId] = useState(projectIdFromUrl)
+  const [creating, setCreating] = useState(false)
+  const [creationError, setCreationError] = useState<string | null>(null)
+  const [seedError, setSeedError] = useState(false)
   // Only the home screen needs every project; skipping it in the studio keeps
   // each save from re-sending the whole list to every open browser.
   const projects = useQuery(api.projects.list, openId ? 'skip' : {})
@@ -43,14 +47,15 @@ function SyncedApp() {
     if (projects?.length !== 0 || seeded.current) return
     seeded.current = true
     const demos = createDemoProjects().map(({ name, color, updatedAt, project }) => ({ name, color, updatedAt, data: toStored(project) }))
-    seedDemos({ projects: demos }).catch((error: unknown) => {
+    seedDemos({ projects: demos }).then(() => setSeedError(false)).catch((error: unknown) => {
       seeded.current = false
+      setSeedError(true)
       console.warn('Adding the demo projects failed:', error)
     })
   }, [projects, seedDemos])
 
   if (openId) return <ProjectSession key={openId} id={openId} onHome={goHome} />
-  if (!projects?.length) return <Message text="Loading projects..." />
+  if (!projects?.length) return <Message text={seedError ? 'Demo projects could not be created. Check your connection and retry.' : 'Loading projects...'} onRetry={seedError ? () => window.location.reload() : undefined} />
 
   const entries: ProjectEntry[] = projects.map((doc) => ({
     id: doc._id, name: doc.name, color: doc.color, updatedAt: doc.updatedAt, project: doc.data as StudioProject,
@@ -59,11 +64,20 @@ function SyncedApp() {
     <StudioHome
       projects={entries}
       onOpenProject={openProject}
+      creating={creating}
+      error={creationError}
       onNewProject={() => {
+        if (creating) return
+        setCreating(true)
+        setCreationError(null)
         const entry = createBlankProject(entries)
         create({ name: entry.name, color: entry.color, data: toStored(entry.project) })
           .then(openProject)
-          .catch((error: unknown) => console.warn('Creating the project failed:', error))
+          .catch((error: unknown) => {
+            setCreationError('The project could not be created. Check your connection and try again.')
+            console.warn('Creating the project failed:', error)
+          })
+          .finally(() => setCreating(false))
       }}
     />
   )
@@ -89,16 +103,19 @@ function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
   )
 }
 
-function Message({ text, onHome }: { text: string; onHome?: () => void }) {
+function Message({ text, onHome, onRetry }: { text: string; onHome?: () => void; onRetry?: () => void }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#16181b] text-sm text-zinc-400">
+    <AeroBackground className="grid min-h-dvh place-items-center p-6 text-aero-ink">
+    <GlassPanel className="flex flex-col items-center gap-4 rounded-2xl p-8 text-center text-sm" role="status">
       <p>{text}</p>
       {onHome && (
-        <button type="button" onClick={onHome} className="rounded-md bg-orange-500 px-3 py-2 text-xs font-bold text-zinc-950 hover:bg-orange-400">
+        <GlassButton onClick={onHome} className="px-4 py-2 text-xs">
           Back to projects
-        </button>
+        </GlassButton>
       )}
-    </div>
+      {onRetry && <GlassButton onClick={onRetry} className="px-4 py-2 text-xs">Retry</GlassButton>}
+    </GlassPanel>
+    </AeroBackground>
   )
 }
 

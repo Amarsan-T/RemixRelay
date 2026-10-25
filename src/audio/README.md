@@ -1,12 +1,13 @@
 # RemixRelay audio engine
 
-Framework-independent Tone.js engine for one 16-step bar in 4/4. No samples, React,
-Convex, or network requests are needed. Public imports come from `src/audio/index.ts`.
+Framework-independent Tone.js engine for patterns and arrangements in 4/4.
+Synthesized instruments need no samples or network. The optional Grand Piano
+downloads samples. Public imports come from `src/audio/index.ts`.
 
 ## Integrated studio
 
 The main React/Vite app at `/` now renders Martin's `fl_studio_web_daw.tsx`.
-Its layout, four pattern slots, presets, step editing, embedded note editor, and
+Its Aero layout, up to 32 patterns, presets, step editing, Piano Roll, playlist, and
 mixer are preserved. It uses one `AudioEngine` created by `src/studio/useStudioAudio.ts`.
 There is no second AudioContext, native oscillator implementation, singleton engine,
 or browser-timer playback scheduler in the UI.
@@ -27,11 +28,16 @@ to each assigned channel's Tone rack. The master fader in both views edits the s
 mixer field, and the master effects are a shared bus. A master level above 100% is
 supported up to +6 dB. Per-instrument headroom and a limiter protect the mix.
 
-The previous Pause button is now the **Loop** toggle. With Loop off, Play runs one
-bar and stops; with Loop on it repeats. Space toggles Play/Stop outside form fields
-and buttons. **SONG** is disabled because song arrangement was not implemented in
-Martin's original UI. Channel audition, keyboard previews, metronome, pan, lowpass
+The **Loop** toggle repeats the selected pattern or song. With Loop off, playback
+stops at its end. **PAT** plays the selected pattern; **SONG** plays playlist clips.
+Space toggles Play/Stop outside form fields and buttons. Channel audition,
+velocity-aware keyboard previews, metronome, pan, lowpass
 filter, delay, distortion, and stereo output meters all use the same Tone context.
+
+Pitched synths reserve bounded voices and submit attack/release automation
+together, so a stalled UI thread does not hold their notes. Overdue Transport
+callbacks are skipped. Existing named patches and sampled piano remain supported.
+See `docs/aero-integration-verification.md` for browser and collaboration tests.
 
 Start locally with `npm run dev -- --host 127.0.0.1 --port 5173 --strictPort`:
 
@@ -113,7 +119,7 @@ instance on each effect setup. Never reuse a disposed instance.
 | --- | --- |
 | `new AudioEngine(pattern?)` | Validate/copy a pattern; defaults to demo A. No AudioContext yet. |
 | `initialize(): Promise<void>` | Lazily create/resume audio from a user gesture. Optional; `play()` does this too. |
-| `previewTrack(id, { drum?, pitch?, durationSteps? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
+| `previewTrack(id, { drum?, pitch?, durationSteps?, velocity? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
 | `getOutputLevels(): [number, number]` | Read stereo RMS amplitudes, 0–1, for meters; never initializes audio. |
 | `play(): Promise<void>` | Start at step 0, or keep the current run. Concurrent calls share initialization. Rejects on audio setup failure. |
 | `stop(): void` | Immediately silence, clear owned events/voices, rewind; cancel an in-flight Play. Repeated calls are safe. |

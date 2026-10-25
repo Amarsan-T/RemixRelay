@@ -8,6 +8,8 @@
     "build": "node scripts/vercel-build.mjs --local-default",
     "build:vercel": "node scripts/vercel-build.mjs",
     "lint": "oxlint",
+    "typecheck": "tsc -b --pretty false",
+    "test:e2e": "node tests/e2e/with-local-convex.mjs",
     "test:audio": "node --test tests/audio.test.mjs",
     "test:sync": "node --test tests/sync.test.mjs",
     "test:deployment": "node --test tests/deployment.test.mjs",
@@ -26,6 +28,7 @@
     "tone": "^15.1.22"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",

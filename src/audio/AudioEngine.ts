@@ -7,12 +7,12 @@ import { DRUM_VOICES, totalSteps } from './types'
 import type { MusicalPattern, PlaybackListener, PlaybackState, PreviewOptions, Track } from './types'
 
 /**
- * Overall loudness, applied just before the limiter. The mix peaked around
- * -20 dBFS, far too quiet; this lifts everything evenly to peaks around -5 dBFS.
- * The limiter (-1 dBFS) still catches anything louder, so it can't clip.
- * Raise or lower it to taste: +6 is about twice as loud.
+ * Calibrated pre-limiter headroom. Chrome measured 1.66 full-scale transients
+ * at the previous +15 dB boost: Tone's compressor limiter is not a brick wall.
+ * Keep normal synthesized demo mixes below full scale without relying on it
+ * to catch every attack. This is separate from bounded voice/release handling.
  */
-const MASTER_BOOST_DB = 15
+const MASTER_BOOST_DB = 9
 const PLAYING_GAIN = 0.8 * Tone.dbToGain(MASTER_BOOST_DB)
 
 /**
@@ -116,12 +116,12 @@ export class AudioEngine {
     if (source.type === 'drums') {
       const voice = options.drum ?? 'kick'
       if (!DRUM_VOICES.includes(voice)) throw new TypeError('Unknown drum preview voice')
-      preview = { ...source, pattern: { kick: [], snare: [], closedHat: [], openHat: [], [voice]: [{ step: 0 }] } }
+      preview = { ...source, pattern: { kick: [], snare: [], closedHat: [], openHat: [], [voice]: [{ step: 0, velocity: options.velocity ?? 0.8 }] } }
     } else {
       preview = { ...source, steps: [{ step: 0, notes: [{
         pitch: options.pitch ?? source.steps[0]?.notes[0]?.pitch ?? (source.type === 'bass' ? 'C2' : 'C4'),
         durationSteps: options.durationSteps ?? 2,
-        velocity: 0.8,
+        velocity: options.velocity ?? 0.8,
       }] }] }
     }
     validatePattern({ ...this.pattern, tracks: [preview] })
@@ -131,6 +131,8 @@ export class AudioEngine {
     const latest = this.pattern.tracks.find((track) => track.id === id)
     if (!latest || latest.type !== preview.type) return
     this.syncInstruments()
+    this.instruments.get(id)?.prepare?.(preview, totalSteps(this.pattern))
+    this.instruments.get(id)?.preparePreview?.()
     // Previews skip the scheduling look-ahead (context.now() includes it) so clicks sound instantly.
     const time = this.context.immediate() + 0.005
     this.master.gain.setValueAtTime(PLAYING_GAIN, time)
@@ -263,6 +265,9 @@ export class AudioEngine {
       this.failedTracks.clear()
       this.events.push(transport.scheduleRepeat((time) => {
         if (this.generation !== generation) return
+        // Skip an overdue beat after a blocked UI thread; never replay several
+        // old attacks at "now". Future ticks retain their Transport grid times.
+        if (!context.isOffline && time < context.immediate() + 0.003) return
         const step = Math.round(transport.getTicksAtTime(time) / (transport.PPQ / 4)) % loopSteps
         const stepSeconds = 60 / transport.bpm.getValueAtTime(time) / 4
         const closedHat = this.pattern.tracks.some((track) => track.type === 'drums' && !track.muted &&
@@ -327,6 +332,7 @@ export class AudioEngine {
         this.instruments.set(track.id, createTrackInstrument(this.context, destination, track))
       }
       this.instruments.get(track.id)?.setMix(track)
+      this.instruments.get(track.id)?.prepare?.(track, totalSteps(this.pattern))
     }
   }
 

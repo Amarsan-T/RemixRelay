@@ -1,8 +1,13 @@
 import * as Tone from 'tone'
+import { ScheduledSynth } from './ScheduledSynth'
+import type { InstrumentTrack } from './types'
 
 /** Anything that can play a note; PolySynth and Sampler both fit. */
 export interface SoundVoice {
   triggerAttackRelease(note: string, duration: number, time: number, velocity?: number): unknown
+  prepare?(track: InstrumentTrack, loopSteps: number): void
+  preparePreview?(): void
+  getVoiceStats?(): { allocated: number; dropped: number }
 }
 
 export interface Sound {
@@ -87,8 +92,8 @@ function createPiano(context: Tone.Context): Tone.Sampler {
 }
 
 /** Starts downloading the piano now so it's ready by the time a note plays. */
-export function preloadPiano() {
-  void loadPianoSamples().catch(() => {})
+export function preloadPiano(): Promise<boolean> {
+  return loadPianoSamples().then(() => true, () => false)
 }
 
 /** Builds a preset by id, or returns null for an unknown id (the caller falls back to the default synth). */
@@ -102,13 +107,11 @@ export function createSound(id: string, context: Tone.Context, output: Tone.Tone
       )
     case 'synth-lead':
       return chain(
-        new Tone.PolySynth({
-          context, voice: Tone.Synth, maxPolyphony: 32, volume: -1,
-          options: {
+        new ScheduledSynth(context, () => new Tone.Synth({
+          context, volume: -1,
             oscillator: { type: 'fatsawtooth', count: 3, spread: 20 } as Tone.OmniOscillatorOptions,
             envelope: { attack: 0.01, decay: 0.2, sustain: 0.5, release: 0.3 },
-          },
-        }),
+        }), 0.3),
         [
           new Tone.Filter({ context, frequency: 3200, type: 'lowpass' }),
           new Tone.FeedbackDelay({ context, delayTime: 0.28, feedback: 0.25, wet: 0.2 }),
@@ -117,24 +120,21 @@ export function createSound(id: string, context: Tone.Context, output: Tone.Tone
       )
     case 'deep-bass':
       return chain(
-        new Tone.PolySynth({
-          context, voice: Tone.MonoSynth, maxPolyphony: 16, volume: -2,
-          options: {
+        new ScheduledSynth(context, () => new Tone.MonoSynth({
+          context, volume: -2,
             oscillator: { type: 'square' },
             filter: { Q: 2, type: 'lowpass', rolloff: -24 },
             envelope: { attack: 0.005, decay: 0.2, sustain: 0.6, release: 0.2 },
             filterEnvelope: { attack: 0.005, decay: 0.15, sustain: 0.3, release: 0.2, baseFrequency: 80, octaves: 3.5 },
-          },
-        }),
+        }), 0.2, 16),
         [],
         output,
       )
     case 'warm-pad':
       return chain(
-        new Tone.PolySynth({
-          context, voice: Tone.AMSynth, maxPolyphony: 32, volume: 5,
-          options: { harmonicity: 1.5, envelope: { attack: 0.4, decay: 0.3, sustain: 0.8, release: 1.5 } },
-        }),
+        new ScheduledSynth(context, () => new Tone.AMSynth({
+          context, volume: 5, harmonicity: 1.5, envelope: { attack: 0.4, decay: 0.3, sustain: 0.8, release: 1.5 },
+        }), 1.5),
         [
           new Tone.Chorus({ context, frequency: 2, delayTime: 2.5, depth: 0.5 }).start(),
           new Tone.Reverb({ context, decay: 5, wet: 0.45 }),
@@ -143,26 +143,22 @@ export function createSound(id: string, context: Tone.Context, output: Tone.Tone
       )
     case 'pluck':
       return chain(
-        new Tone.PolySynth({
-          context, voice: Tone.FMSynth, maxPolyphony: 32, volume: 8,
-          options: {
+        new ScheduledSynth(context, () => new Tone.FMSynth({
+          context, volume: 8,
             harmonicity: 3, modulationIndex: 10,
             envelope: { attack: 0.001, decay: 0.3, sustain: 0, release: 0.4 },
             modulationEnvelope: { attack: 0.001, decay: 0.2, sustain: 0, release: 0.2 },
-          },
-        }),
+        }), 0.4),
         [new Tone.Reverb({ context, decay: 1.5, wet: 0.25 })],
         output,
       )
     case 'chiptune':
       return chain(
-        new Tone.PolySynth({
-          context, voice: Tone.Synth, maxPolyphony: 32, volume: -9,
-          options: {
+        new ScheduledSynth(context, () => new Tone.Synth({
+          context, volume: -9,
             oscillator: { type: 'pulse', width: 0.25 } as Tone.OmniOscillatorOptions,
             envelope: { attack: 0.001, decay: 0.1, sustain: 0.4, release: 0.05 },
-          },
-        }),
+        }), 0.05),
         [],
         output,
       )

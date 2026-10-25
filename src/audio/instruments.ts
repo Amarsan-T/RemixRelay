@@ -1,6 +1,7 @@
 import * as Tone from 'tone'
 import { createMixBus } from './mixer'
 import { createSound, type SoundVoice } from './sounds'
+import { ScheduledSynth } from './ScheduledSynth'
 import { DRUM_VOICES } from './types'
 import type { DrumVoice, Track } from './types'
 
@@ -12,6 +13,9 @@ export interface TrackInstrument {
   setMix(track: Track): void
   playStep(track: Track, step: number, time: number, stepSeconds: number): void
   chokeOpenHat?(time: number): void
+  prepare?(track: Track, loopSteps: number): void
+  preparePreview?(): void
+  getVoiceStats?(): { allocated: number; dropped: number }
   dispose(): void
 }
 
@@ -59,6 +63,9 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
       type: track.type,
       setMix,
       chokeOpenHat,
+      prepare(next) {
+        if (next.type === 'drums') for (const voice of DRUM_VOICES) if (next.pattern[voice]?.some((hit) => hit.velocity !== 0)) drum(voice)
+      },
       playStep(next, step, time) {
         if (next.type !== 'drums' || next.muted) return
         // Open first: a closed hat at the same step chokes the open hat.
@@ -103,12 +110,16 @@ export function createTrackInstrument(context: Tone.Context, destination: Tone.G
   // A chosen preset (piano, pad...) replaces the default synth for this track.
   const preset = track.sound ? createSound(track.sound, context, output) : null
   // Polyphony lets long notes overlap without an old note-off cutting a new one.
-  const fallback = preset ? null : new Tone.PolySynth({ context, voice: Tone.Synth, maxPolyphony: 32, options: options[track.type] }).connect(output)
+  const fallback = preset ? null : new ScheduledSynth(context,
+    () => new Tone.Synth({ context, ...options[track.type] }), options[track.type].envelope.release).connect(output)
   const synth: SoundVoice = preset?.voice ?? fallback!
   return {
     type: track.type,
     sound: track.sound,
     setMix,
+    prepare(next, loopSteps) { if (next.type !== 'drums') synth.prepare?.(next, loopSteps) },
+    preparePreview() { synth.preparePreview?.() },
+    getVoiceStats() { return synth.getVoiceStats?.() ?? { allocated: 0, dropped: 0 } },
     playStep(next, step, time, stepSeconds) {
       if (next.type === 'drums' || next.muted) return
       const entry = next.steps.find((item) => item.step === step)
