@@ -244,6 +244,10 @@ export function resolveSuggestion(project: SuggestionProject, item: NoteSuggesti
   const length = patternLengthOf(project, item.pattern)
   // The channel was deleted or changed kind, or the pattern was removed or shortened.
   if (!channel || (kind === 'melodic') !== !!item.note || item.pattern > patternCountOf(project) || item.step >= length) return result('unavailable')
+  // Re-check stored values too, so even a damaged record can never be highlighted or applied.
+  const showablePitch = (name?: string) => name === undefined || showable(name) === name
+  if (!Number.isInteger(item.pattern) || item.pattern < 1 || !Number.isInteger(item.step) || item.step < 0 ||
+    !showablePitch(item.note) || !showablePitch(item.to) || (item.length !== undefined && whole(item.length, 1, MAX_NOTE_STEPS) === null)) return result('unavailable')
   if (kind === 'drum') {
     if (item.action === 'change') return result('unavailable')
     return result((item.action === 'add') === isLit(project, item.pattern, channel.id, item.step) ? 'done' : 'pending')
@@ -288,7 +292,10 @@ export function readReply(reply: string, project: SuggestionProject): { text: st
   const { text, block, found } = extractSuggestionBlock(reply)
   if (!found) return { text, suggestions: null }
   const suggestions = block === null ? { items: [], skipped: 1 } : suggestionsFromBlock(block, project)
-  const shown = text || (suggestions.items.length ? 'Here are some notes to try. They are highlighted in the editor.' : '')
+  // Never fall back to the raw block: a reply that was only a block still gets a sentence.
+  const shown = text || (suggestions.items.length
+    ? 'Here are some notes to try. They are highlighted in the editor.'
+    : "Claude's note ideas couldn't be shown. Try asking again.")
   return { text: shown, suggestions: suggestions.items.length || suggestions.skipped ? suggestions : null }
 }
 

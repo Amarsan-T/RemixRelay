@@ -55,8 +55,11 @@ test('Convex chat persists, shares, reconnects, rejects duplicates and isolates 
     await expect(page.getByLabel('Send message')).toBeDisabled()
     expect(await list()).toHaveLength(2)
 
-    await page.context().setOffline(true)
+    // The retried reply can still be pending here (the Retry check above also matches the earlier,
+    // identical error). The chat correctly refuses a new question until it finishes, so wait for that.
     await page.getByLabel('Message Claude').fill('Reconnect without duplicating me')
+    await expect(page.getByLabel('Send message')).toBeEnabled()
+    await page.context().setOffline(true)
     await page.getByLabel('Message Claude').press('Enter')
     await page.context().setOffline(false)
     await expect(panel(peer)).toContainText('Reconnect without duplicating me')

@@ -249,6 +249,17 @@ test('a suggestion that no longer fits is not applied', () => {
   assert.equal(applySuggestion(shortened, addE4), shortened)
 })
 
+test('damaged stored suggestions are never highlighted or applied', () => {
+  const project = trap()
+  const [addE4] = items()
+  for (const damaged of [{ ...addE4, note: 'X9' }, { ...addE4, note: 'C9' }, { ...addE4, step: -1 }, { ...addE4, step: 1.5 }, { ...addE4, length: 99 }]) {
+    assert.equal(resolveSuggestions(project, [damaged])[0].status, 'unavailable')
+    assert.equal(applySuggestion(project, damaged), project)
+  }
+  // A reply that was only an unreadable block never shows the raw block.
+  assert.equal(readReply('<note-suggestions>{oops}</note-suggestions>', project).text, "Claude's note ideas couldn't be shown. Try asking again.")
+})
+
 // ---- Prompt and memory --------------------------------------------------------
 
 test('the system prompt explains the format and fits the Python gateway limit', () => {
