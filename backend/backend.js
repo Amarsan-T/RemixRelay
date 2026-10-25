@@ -1,3 +1,8 @@
+// Automatically use relative path on Vercel or localhost port 8000 during local dev
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+    ? 'http://127.0.0.1:8000' 
+    : '';
+
 /*
 Use for the first message (claude will recommend piano roll or step sequencer to use)
 params: 
@@ -9,12 +14,12 @@ async function firstInquiry(inquiry) {
     // information to be sent to Python API: chat is the input to claude, prev is the previous conversation history
     const payload = {
         chat: inquiry,
-        prev: null // or previous context string if applicable
+        hist: null // or previous context string if applicable
     };
 
     try {
         //send a post request to startInquiry from python API with payload in body
-        const response = await fetch('http://127.0.0.1:8000/startInquiry', {
+        const response = await fetch('${API_BASE_URL}/startInquiry', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -49,12 +54,12 @@ async function aiAssist(inquiry) {
     // information to be sent to Python API: chat is the input to claude, prev is the previous conversation history
     const payload = {
         chat: inquiry,
-        prev: null // or previous context string if applicable
+        hist: null // or previous context string if applicable
     };
 
     try {
         //send a post request to startInquiry from python API with payload in body
-        const response = await fetch('http://127.0.0.1:8000/aiAssist', {
+        const response = await fetch('${API_BASE_URL}/aiAssist', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
