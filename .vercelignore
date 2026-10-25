@@ -1,3 +1,7 @@
 # Local experiments are not part of the React + Convex production deployment.
 /experiments/
 /backend/
+
+/.venv/
+/__pycache__/
+**/__pycache__/

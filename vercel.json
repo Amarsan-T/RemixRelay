@@ -12,5 +12,11 @@
   ],
   "git": {
     "deploymentEnabled": false
+  },
+  "functions": {
+    "api/ai.py": {
+      "excludeFiles": "{node_modules/**,src/**,convex/**,tests/**,experiments/**,backend/**,docs/**,dist/**,.git/**,.venv/**}",
+      "maxDuration": 90
+    }
   }
 }

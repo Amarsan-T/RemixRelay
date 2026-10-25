@@ -6,7 +6,7 @@ import { PENDING_TIMEOUT_MS } from '../convex/chatLimits'
 import { LIMITS } from '../convex/chat'
 
 // Exercise real registered functions, indexes and scheduled actions, replacing
-// only Anthropic's HTTP boundary. No credentials or network are needed.
+// only the authenticated Python HTTP boundary. No credentials or network are needed.
 const modules = import.meta.glob('../convex/**/*.ts')
 const fetchMock = vi.fn()
 const createTest = () => convexTest(schema, modules)
@@ -28,14 +28,18 @@ const flush = async () => {
   vi.advanceTimersByTime(1)
   await t.finishInProgressScheduledFunctions()
 }
-const response = (content = 'Your song is at 97 BPM.', stop_reason = 'end_turn') => new Response(JSON.stringify({
-  id: 'msg_test', type: 'message', role: 'assistant', model: 'claude-opus-5-5', stop_reason,
-  stop_sequence: null, content: [{ type: 'text', text: content }], usage: { input_tokens: 120, output_tokens: 12 },
-}), { status: 200, headers: { 'content-type': 'application/json' } })
+const response = (content = 'Your song is at 97 BPM.', stop_reason = 'end_turn') => new Response(JSON.stringify(
+  !content ? { status: 'error', error: { code: 'empty_reply' } } : {
+    requestId: JSON.parse(fetchMock.mock.calls.at(-1)![1].body).requestId,
+    status: 'complete', content: content + (stop_reason === 'max_tokens' ? '\\n\\n[This answer was cut short.]' : ''),
+    model: 'claude-opus-5-5', inputTokens: 120, outputTokens: 12,
+  }), { status: content ? 200 : 502, headers: { 'content-type': 'application/json' } })
 
 beforeEach(async () => {
   vi.useFakeTimers()
-  vi.stubEnv('ANTHROPIC_API_KEY', 'test-placeholder')
+  vi.stubEnv('AI_SERVICE_URL', 'https://preview.vercel.app/api/ai')
+  vi.stubEnv('AI_SERVICE_TOKEN', 'test-only-service-token-abcdefghijklmnopqrstuvwxyz')
+  vi.stubEnv('ANTHROPIC_API_KEY', 'must-never-be-used-by-convex')
   vi.stubEnv('CLAUDE_MODEL', '')
   vi.stubEnv('ANTHROPIC_WORKSPACE_ID', '')
   vi.stubGlobal('fetch', fetchMock)
@@ -85,10 +89,14 @@ test('scheduled response uses saved context and prior memory, and persists token
   await flush()
   const request = fetchMock.mock.calls.at(-1)!
   const body = JSON.parse(request[1].body)
-  expect(body.messages[0].content).toContain('Ada')
-  expect(body.messages[1].content).toContain('97 BPM')
-  expect(body.messages.at(-1).content[0].text).toContain('101 BPM')
-  expect(body.max_tokens).toBe(4096)
+  expect(body.history[0].content).toContain('Ada')
+  expect(body.history[1].content).toContain('97 BPM')
+  expect(body.projectContext).toContain('101 BPM')
+  expect(body.history.at(-1).content).toContain('current tempo')
+  expect(body.systemPrompt).toContain('music assistant')
+  expect(body.requestId).toMatch(/:1$/)
+  expect(request[1].redirect).toBe('error')
+  expect(new Headers(request[1].headers).get('authorization')).toContain('Bearer test-only-service-token-')
   expect(await list()).toHaveLength(4)
 })
 
@@ -122,7 +130,7 @@ test('duplicate action executions claim the same attempt only once', async () =>
 })
 
 test('missing server key gives a recoverable error without contacting Anthropic', async () => {
-  vi.stubEnv('ANTHROPIC_API_KEY', '')
+  vi.stubEnv('AI_SERVICE_TOKEN', '')
   await send()
   await flush()
   expect(await reply()).toMatchObject({ status: 'error', content: expect.stringContaining("isn't set up") })
@@ -131,7 +139,7 @@ test('missing server key gives a recoverable error without contacting Anthropic'
 
 test('HTTP errors are safe to show, and a user retry reuses the same record', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'authentication_error', message: 'sensitive provider details' } }), { status: 401 }))
+  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ status: 'error', error: { code: 'provider_auth', message: 'sensitive provider details' } }), { status: 401 }))
   await send()
   await flush()
   const failed = await reply()
@@ -144,7 +152,7 @@ test('HTTP errors are safe to show, and a user retry reuses the same record', as
 })
 
 test('retries count toward minute limits without replacing previous attempt records', async () => {
-  vi.stubEnv('ANTHROPIC_API_KEY', '')
+  vi.stubEnv('AI_SERVICE_TOKEN', '')
   await send()
   await flush()
   const message = await reply()
@@ -161,45 +169,47 @@ test.each([
   ['Your credit balance is too low to access the Anthropic API.', 'credits and spending limits', 'billing'],
   ['The organization has reached its spend limit.', 'credits and spending limits', 'billing'],
   ['This API key is not scoped to a workspace; include anthropic-workspace-id.', 'ANTHROPIC_WORKSPACE_ID', 'workspace'],
-  ['Unsupported beta header: provider-only details', 'model settings', 'fallback'],
-  ['output_config.effort is unsupported on this model: provider-only details', 'model settings', 'effort'],
+  ['Unsupported beta header: provider-only details', 'model settings', 'settings'],
+  ['output_config.effort is unsupported on this model: provider-only details', 'model settings', 'settings'],
   ['Invalid model identifier: provider-only details', 'CLAUDE_MODEL', 'model'],
-  ['Invalid message content: provider-only details', 'Try a shorter message', 'request'],
-])('HTTP 400 is classified safely: %s', async (message, expected, reason) => {
+  ['Invalid message content: provider-only details', 'Try a shorter message', 'invalid_request'],
+])('service error codes are classified safely: %s', async (message, expected, reason) => {
   const logger = vi.spyOn(console, 'error').mockImplementation(() => {})
-  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message } }), { status: 400 }))
+  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ status: 'error', error: { code: reason, message } }), { status: 400 }))
   await send()
   await flush()
   expect((await reply()).content).toContain(expected)
   expect((await reply()).content).not.toContain(message)
-  expect(JSON.stringify(logger.mock.calls)).toContain('reason=' + reason)
+  expect(logger).not.toHaveBeenCalled()
   expect(JSON.stringify(logger.mock.calls)).not.toContain(message)
 })
 
-test('non-JSON provider billing errors are classified without exposing their body', async () => {
+test('non-JSON service errors are rejected without exposing their body', async () => {
   const message = 'Credit balance is too low. Private provider diagnostic.'
   const logger = vi.spyOn(console, 'error').mockImplementation(() => {})
   fetchMock.mockImplementationOnce(async () => new Response(message, { status: 400 }))
   await send()
   await flush()
-  expect((await reply()).content).toContain('credits and spending limits')
-  expect(JSON.stringify(logger.mock.calls)).toContain('reason=billing')
+  expect((await reply()).content).toContain('unexpected response')
+  expect(logger).not.toHaveBeenCalled()
   expect(JSON.stringify(logger.mock.calls)).not.toContain(message)
 })
 
-test('an organization-wide key sends the selected workspace only in a server request header', async () => {
+test('only the service token crosses the Convex boundary; upstream credentials never do', async () => {
   vi.stubEnv('ANTHROPIC_WORKSPACE_ID', ' wrkspc_test ')
   await send()
   await flush()
   const options = fetchMock.mock.calls[0][1]
-  expect(new Headers(options.headers).get('anthropic-workspace-id')).toBe('wrkspc_test')
+  expect(new Headers(options.headers).get('anthropic-workspace-id')).toBeNull()
+  expect(new Headers(options.headers).get('x-api-key')).toBeNull()
+  expect(JSON.stringify(options)).not.toContain('must-never-be-used-by-convex')
   expect(options.body).not.toContain('wrkspc_test')
   expect(await reply()).toMatchObject({ status: 'complete' })
 })
 
 test('an unavailable workspace is distinguished from an unavailable model', async () => {
   vi.spyOn(console, 'error').mockImplementation(() => {})
-  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'not_found_error', message: 'Workspace not found.' } }), { status: 404 }))
+  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ status: 'error', error: { code: 'workspace', message: 'Workspace not found.' } }), { status: 404 }))
   await send()
   await flush()
   expect((await reply()).content).toContain('ANTHROPIC_WORKSPACE_ID')
@@ -226,7 +236,7 @@ test('hourly and global budgets reject requests before saving another question',
 })
 
 test('older failed turns cannot be retried after a newer question', async () => {
-  vi.stubEnv('ANTHROPIC_API_KEY', '')
+  vi.stubEnv('AI_SERVICE_TOKEN', '')
   await send('first')
   await flush()
   const failed = await reply()
@@ -247,18 +257,18 @@ test('history is project-scoped and bounded, while saved messages remain availab
   await flush()
   expect(await list()).toHaveLength(100)
   const requests = fetchMock.mock.calls.map((call) => JSON.parse(call[1].body))
-  const body = requests.find((request) => request.messages.at(-1).content.at(-1).text === 'latest')!
-  expect(body.messages.length).toBeLessThanOrEqual(20)
+  const body = requests.find((request) => request.history.at(-1).content === 'latest')!
+  expect(body.history.length).toBeLessThanOrEqual(20)
   expect(JSON.stringify(body)).not.toContain('private to other project')
   expect(await t.run((ctx) => ctx.db.query('chatMessages').withIndex('by_project', (q) => q.eq('projectId', projectId)).collect())).toHaveLength(122)
 })
 
-test('custom models omit model-specific beta and effort settings', async () => {
+test('the configured Python service, not a request body, owns model selection', async () => {
   vi.stubEnv('CLAUDE_MODEL', 'custom-supported-model')
   await send()
   await flush()
   const body = JSON.parse(fetchMock.mock.calls[0][1].body)
-  expect(body.model).toBe('custom-supported-model')
+  expect(body.model).toBeUndefined()
   expect(body.output_config).toBeUndefined()
   expect(body.fallbacks).toBeUndefined()
 })
@@ -272,4 +282,39 @@ test('empty responses and output truncation are handled explicitly', async () =>
   await t.mutation(api.chat.retry, { replyId: (await reply())._id })
   await flush()
   expect((await reply()).content).toContain('[This answer was cut short.]')
+})
+
+test('service configuration rejects unsafe URLs and never enables local access on cloud', async () => {
+  const { serviceConfiguration } = await import('../convex/aiService')
+  const env = { AI_SERVICE_TOKEN: 'test-only-service-token-abcdefghijklmnopqrstuvwxyz', AI_SERVICE_URL: 'https://preview.vercel.app/api/ai' }
+  expect(serviceConfiguration(env)?.url).toBe(env.AI_SERVICE_URL)
+  for (const url of ['http://preview.vercel.app/api/ai', 'https://preview.vercel.app/api/ai?token=secret',
+    'https://user:secret@preview.vercel.app/api/ai', 'https://preview.vercel.app/api/ai#part',
+    'https://preview.vercel.app.attacker.example/api/ai', 'https://127.0.0.1/api/ai', 'https://preview.vercel.app/other']) {
+    expect(serviceConfiguration({ ...env, AI_SERVICE_URL: url })).toBeNull()
+  }
+  expect(serviceConfiguration({ ...env, AI_SERVICE_TOKEN: 'short' })).toBeNull()
+  expect(serviceConfiguration({ ...env, AI_SERVICE_URL: 'http://127.0.0.1:8000/api/ai', AI_SERVICE_ALLOW_LOCAL: '1', CONVEX_CLOUD_URL: 'https://silent-butterfly-873.convex.cloud' })).toBeNull()
+})
+
+test('invalid service replies and wrong request identities cannot become saved answers', async () => {
+  for (const result of [
+    { status: 'complete', requestId: 'wrong', content: 'BAD', model: 'test', inputTokens: 1, outputTokens: 1 },
+    { status: 'complete', content: 'BAD', model: 'test', inputTokens: -1, outputTokens: 99999 },
+  ]) {
+    fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify(result), { status: 200 }))
+    await send()
+    await flush()
+    expect((await reply()).content).toContain('unexpected response')
+  }
+  expect(fetchMock).toHaveBeenCalledTimes(2)
+})
+
+test('network failures are not retried and never expose transport diagnostics', async () => {
+  fetchMock.mockRejectedValueOnce(new Error('private connection and service token details'))
+  await send()
+  await flush()
+  expect((await reply()).content).toContain("Couldn't reach")
+  expect((await reply()).content).not.toContain('private')
+  expect(fetchMock).toHaveBeenCalledTimes(1)
 })
