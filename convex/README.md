@@ -32,35 +32,11 @@ on different channels at the same time keep both edits. Other fields (`bpm`,
 | `internal.projects.load({ id })` | Server-side features, e.g. the Claude assistant |
 | `internal.projects.saveFromServer({ id, fields, source })` | Server-side features that edit a project |
 
-## For the Claude assistant
+## Claude chat
 
-Call Claude from a Convex **action** so the API key stays on the server:
-
-```sh
-npx convex env set ANTHROPIC_API_KEY sk-ant-...   # never in .env.local, never VITE_*
-```
-
-```ts
-// convex/assistant.ts
-'use node'
-import { action } from './_generated/server'
-import { internal } from './_generated/api'
-import { v } from 'convex/values'
-
-export const ask = action({
-  args: { projectId: v.id('projects'), question: v.string() },
-  handler: async (ctx, { projectId, question }) => {
-    const project = await ctx.runQuery(internal.projects.load, { id: projectId })
-    if (!project) throw new Error('Project not found')
-    // project.data is a StudioProject: bpm, channels, stepData, pianoNotes, mixerTracks, song...
-    // ...call Claude with a compact summary of project.data and the question...
-    // To change the music, replace whole fields; every open studio updates live:
-    // await ctx.runMutation(internal.projects.saveFromServer, { id: projectId, fields: { pianoNotes }, source: 'assistant' })
-  },
-})
-```
-
-In the browser, the open project's id is the `project` URL parameter.
+The project now has a persistent, shared Claude chat. See
+[Claude chat setup and verification](../docs/claude-chat.md) for the server
+architecture, limits, secure credential setup, and test commands.
 
 ## Running it
 

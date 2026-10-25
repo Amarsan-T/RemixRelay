@@ -1,0 +1,6 @@
+{
+  "extends": "./convex/tsconfig.json",
+  "compilerOptions": { "types": ["vite/client"] },
+  "include": ["tests/chat-backend.test.ts"],
+  "exclude": []
+}
