@@ -498,3 +498,111 @@ test('the Empty Template project has blank patterns and an empty song', async ()
   validatePattern(pattern)
   assert.ok(pattern.tracks.every((t) => (t.type === 'drums' ? Object.values(t.pattern).flat() : t.steps).length === 0), 'Plays silence')
 })
+
+/** Stand-in synths for the voice pool: they record what they're told to do, and when. */
+function recordingVoices() {
+  const calls = []
+  let made = 0
+  const create = () => {
+    const id = made++
+    return {
+      triggerAttack: (note, time, velocity) => calls.push([id, 'attack', note, time, velocity]),
+      triggerRelease: (time) => calls.push([id, 'release', time]),
+      dispose: () => calls.push([id, 'dispose']),
+    }
+  }
+  return { calls, create, made: () => made }
+}
+
+test("a pooled note's release is scheduled with its attack, so a busy page can't hold it on", async () => {
+  // Tone's PolySynth sends future releases through a JavaScript timer; in Chrome a
+  // 600 ms stall kept notes sounding at two thirds of their level until it ended.
+  const { VoicePool } = await import('../src/audio/voicePool.ts')
+  const voices = recordingVoices()
+  const pool = new VoicePool(voices.create, 0.3)
+  const realSetTimeout = globalThis.setTimeout
+  let timers = 0
+  globalThis.setTimeout = (...args) => { timers++; return realSetTimeout(...args) }
+  try {
+    pool.triggerAttackRelease('C4', 0.125, 1, 0.9)
+  } finally {
+    globalThis.setTimeout = realSetTimeout
+  }
+  assert.deepEqual(voices.calls, [[0, 'attack', 'C4', 1, 0.9], [0, 'release', 1.125]])
+  assert.equal(timers, 0, 'No timer stands between a note and its release')
+})
+
+test('overlapping notes of the same pitch each get a voice and end on their own time', async () => {
+  const { VoicePool } = await import('../src/audio/voicePool.ts')
+  const voices = recordingVoices()
+  const pool = new VoicePool(voices.create, 0.3)
+  pool.triggerAttackRelease('C4', 1, 2) // long note, ends at 3
+  pool.triggerAttackRelease('C4', 0.125, 2.25) // short note on top, ends at 2.375
+  const releases = voices.calls.filter(([, kind]) => kind === 'release')
+  assert.deepEqual(releases, [[0, 'release', 3], [1, 'release', 2.375]], "The short note can't cut the long one")
+  // Voice 1 is free again once its release has finished; voice 0 is still busy.
+  pool.triggerAttackRelease('E4', 0.5, 2.8)
+  assert.deepEqual(voices.calls.at(-2), [1, 'attack', 'E4', 2.8, 1])
+  // Long after both, the first voice is reused rather than building another.
+  pool.triggerAttackRelease('G4', 0.5, 10)
+  assert.equal(voices.made(), 2)
+  pool.dispose()
+  assert.deepEqual(voices.calls.filter(([, kind]) => kind === 'dispose').map(([id]) => id), [0, 1])
+  assert.equal(pool.size, 0)
+})
+
+test('a full voice pool skips extra notes instead of growing without limit', async () => {
+  const { VoicePool } = await import('../src/audio/voicePool.ts')
+  const voices = recordingVoices()
+  const pool = new VoicePool(voices.create, 0.1, 2)
+  for (const note of ['C4', 'E4', 'G4']) pool.triggerAttackRelease(note, 1, 0)
+  assert.equal(pool.size, 2)
+  assert.equal(pool.dropped, 1)
+  pool.prepare(10)
+  assert.equal(pool.size, 2, 'prepare respects the limit too')
+})
+
+test('voices are prepared for the most notes a track sounds at once, releases included', async () => {
+  const { voicesNeeded } = await import('../src/audio/voicePool.ts')
+  const note = (durationSteps, velocity) => ({ pitch: 'C4', durationSteps, ...(velocity === undefined ? {} : { velocity }) })
+  // A two-note chord, then a third note while it still sounds.
+  assert.equal(voicesNeeded([{ step: 0, notes: [note(4), note(4)] }, { step: 2, notes: [note(1)] }], 1), 3)
+  // A release keeps a voice busy: without one these don't overlap, with one they do.
+  const twoNotes = [{ step: 0, notes: [note(2)] }, { step: 3, notes: [note(1)] }]
+  assert.equal(voicesNeeded(twoNotes, 0), 1)
+  assert.equal(voicesNeeded(twoNotes, 1), 1, 'A voice frees up exactly as the next note starts')
+  assert.equal(voicesNeeded(twoNotes, 2), 2)
+  assert.equal(voicesNeeded([{ step: 0, notes: [note(4, 0)] }], 1), 0, 'Silent notes need no voice')
+  assert.equal(voicesNeeded([], 1), 0)
+})
+
+test("the output guard leaves normal levels untouched and keeps loud peaks under full scale", async () => {
+  // With the mixer faders up, Chrome measured peaks of 1.37 and hundreds of clipped samples.
+  const { softClip, GUARD_KNEE, GUARD_CEILING } = await import('../src/audio/mixer.ts')
+  for (const sample of [0, 0.1, -0.5, 0.62, GUARD_KNEE, -GUARD_KNEE]) assert.equal(softClip(sample), sample)
+  let previous = -Infinity
+  for (let x = -4; x <= 4; x += 0.001) {
+    const y = softClip(x)
+    // Far past full scale the curve flattens onto the ceiling; up to 1.5 it keeps rising.
+    assert.ok(Math.abs(x) <= 1.5 ? y > previous : y >= previous, `never turns back (at ${x.toFixed(3)})`)
+    assert.ok(Math.abs(y) <= GUARD_CEILING, `stays at or under the ceiling (at ${x.toFixed(3)})`)
+    assert.equal(softClip(-x), -y)
+    previous = y
+  }
+  assert.ok(softClip(1.37) < 1 && softClip(100) < 1, 'loud peaks no longer clip')
+  // No corner at the knee: just above it the curve still rises at almost exactly 1:1.
+  const slope = (softClip(GUARD_KNEE + 1e-4) - GUARD_KNEE) / 1e-4
+  assert.ok(Math.abs(slope - 1) < 1e-3)
+})
+
+test('stopping fades out from wherever the gain is instead of cutting it', async () => {
+  // An instant cut clicked: up to 10x the waveform's own largest step in Chrome.
+  const { fadeOut, STOP_FADE_SECONDS } = await import('../src/audio/AudioEngine.ts')
+  const calls = []
+  fadeOut({
+    cancelAndHoldAtTime: (time) => calls.push(['hold', time]),
+    linearRampToValueAtTime: (value, time) => calls.push(['ramp', value, time]),
+  }, 5)
+  assert.deepEqual(calls, [['hold', 5], ['ramp', 0, 5 + STOP_FADE_SECONDS]])
+  assert.ok(STOP_FADE_SECONDS > 0.005 && STOP_FADE_SECONDS <= 0.03, 'long enough not to click, short enough to feel instant')
+})
