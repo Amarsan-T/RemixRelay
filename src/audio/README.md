@@ -25,7 +25,9 @@ The channel and insert volume gains multiply; channel and insert pans add and cl
 to -1–1. Insert mute/solo combine with channel mute/solo. Insert effects are applied
 to each assigned channel's Tone rack. The master fader in both views edits the same
 mixer field, and the master effects are a shared bus. A master level above 100% is
-supported up to +6 dB. Per-instrument headroom and a limiter protect the mix.
+supported up to +6 dB. Per-instrument headroom, a limiter, and a final output guard
+protect the mix. The guard leaves levels below 0.8 untouched and rounds off louder
+peaks so they never reach full scale (with the faders up they used to clip).
 
 The previous Pause button is now the **Loop** toggle. With Loop off, Play runs one
 bar and stops; with Loop on it repeats. Space toggles Play/Stop outside form fields
@@ -116,7 +118,7 @@ instance on each effect setup. Never reuse a disposed instance.
 | `previewTrack(id, { drum?, pitch?, durationSteps? }): Promise<void>` | Audition an instrument through its current mix without starting or replacing the pattern. Invoke from a user gesture. |
 | `getOutputLevels(): [number, number]` | Read stereo RMS amplitudes, 0–1, for meters; never initializes audio. |
 | `play(): Promise<void>` | Start at step 0, or keep the current run. Concurrent calls share initialization. Rejects on audio setup failure. |
-| `stop(): void` | Immediately silence, clear owned events/voices, rewind; cancel an in-flight Play. Repeated calls are safe. |
+| `stop(): void` | Fade out over 15 ms (an instant cut clicks), clear owned events, rewind; cancel an in-flight Play. The run's voices are disposed once the fade ends. Repeated calls are safe. |
 | `setBpm(bpm)` | Set 40–240 BPM without restarting the Transport. |
 | `setLoop(boolean)` | Repeat one bar, or stop at the next bar end. |
 | `setTrackMuted(id, muted)` | Gate the whole track, including sustained notes; skip new notes while muted. |
@@ -236,9 +238,15 @@ change affects future note durations and step timing, while held notes retain
 their original duration. Notes can sustain over loop boundaries. One-shot mode
 silences tails at the bar boundary.
 
-Stop gates the final output after all effects and disposes voices/effects, so delay
-tails cannot sound after Stop or reappear in the next run. Old delayed note releases
-cannot cut notes in the next run.
+Stop fades the final output after all effects over 15 ms, then disposes that run's
+voices/effects, so delay tails cannot sound after Stop or reappear in the next run.
+The run's own input fades too, so Play right after Stop can't bring old notes back.
+
+Pitched notes play on pools of monophonic synths (`voicePool.ts`), one note per
+synth, with the release scheduled on the audio clock when the note starts. Tone's
+PolySynth sent future releases through a JavaScript timer, so a busy page (a long
+render, garbage collection) held notes on until it caught up. Overlapping notes of
+the same pitch now each end on time.
 Dispose also closes the private AudioContext. Stop/dispose while audio is starting
 cancel that start; a stale async continuation cannot restart playback. Tone Draw
 drives only UI notifications, so background-tab rendering throttling does not

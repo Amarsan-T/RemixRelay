@@ -1,6 +1,48 @@
 import * as Tone from 'tone'
 import type { MixSettings } from './types'
 
+/** Below this level the output guard passes audio through unchanged. */
+export const GUARD_KNEE = 0.8
+/** The guard's output never reaches this, however loud its input. */
+export const GUARD_CEILING = 0.98
+/** Input levels up to this follow the guard's curve; anything louder sits at the ceiling. */
+const GUARD_RANGE = 4
+
+/**
+ * The output guard's curve: unchanged up to the knee, then rounding off
+ * smoothly toward the ceiling, with no corner at the knee.
+ */
+export function softClip(sample: number): number {
+  const level = Math.abs(sample)
+  if (level <= GUARD_KNEE) return sample
+  const room = GUARD_CEILING - GUARD_KNEE
+  return Math.sign(sample) * (GUARD_KNEE + room * Math.tanh((level - GUARD_KNEE) / room))
+}
+
+/**
+ * The last stage before the speakers. The limiter doesn't catch every peak:
+ * with the mixer faders up, the output reached 1.37 and hundreds of samples
+ * clipped (heard as crackle). The guard rounds those peaks off and leaves
+ * normal levels untouched.
+ */
+export function createOutputGuard(context: Tone.Context) {
+  // A WaveShaper only reads inputs from -1 to 1, so scale down first and back up after.
+  // Both scalings are powers of two, which keeps the untouched range exact.
+  const input = new Tone.Gain({ context, gain: 1 / GUARD_RANGE })
+  const shaper = new Tone.WaveShaper({ context, length: 8192, mapping: (value) => softClip(value * GUARD_RANGE) / GUARD_RANGE })
+  const output = new Tone.Gain({ context, gain: GUARD_RANGE })
+  input.chain(shaper, output)
+  return {
+    input,
+    output,
+    dispose() {
+      input.dispose()
+      shaper.dispose()
+      output.dispose()
+    },
+  }
+}
+
 /** A Tone-only signal chain shared by track racks and the master bus. */
 export function createMixBus(context: Tone.Context, destination: Tone.ToneAudioNode, initial: MixSettings) {
   const input = new Tone.Gain({ context, gain: 1 })
