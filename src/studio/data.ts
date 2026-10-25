@@ -1,4 +1,8 @@
+import { DEFAULT_PATTERN_STEPS } from './patternAdapter'
 import type { StudioChannel, StudioPreset, StudioProject } from './types'
+
+/** Bars one default-length pattern covers on the playlist. */
+const PATTERN_BARS = Math.max(1, Math.ceil(DEFAULT_PATTERN_STEPS / 16))
 
 export const NOTES = [
   { name: 'B4', freq: 493.88 },
@@ -140,10 +144,15 @@ export function createStudioProject(preset: string | null = 'Trap Heat'): Studio
   return {
     bpm: start?.bpm ?? 120, loop: true, metronome: false,
     channels: structuredClone(INITIAL_CHANNELS), stepData, pianoNotes,
-    // Pattern 1 for the first 4 bars, so SONG mode plays something right away.
+    // Pattern 1 placed end to end across the song, so SONG mode plays something right away.
+    // Clips are spaced by the pattern's length so long patterns don't overlap.
     song: {
       bars: 8, trackCount: 4,
-      clips: start ? [0, 1, 2, 3].map((bar) => ({ id: `clip-${bar}`, patternId: '1', track: 0, startBar: bar })) : [],
+      clips: start
+        ? Array.from({ length: Math.ceil(8 / PATTERN_BARS) }, (_, i) => ({
+          id: `clip-${i}`, patternId: '1', track: 0, startBar: i * PATTERN_BARS,
+        }))
+        : [],
     },
     mixerTracks: [
       { id: 0, name: 'Master', vol: 0.85, pan: 0, filter: 20000, delay: 0, dist: 0, mute: false, solo: false },

@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import { ListMusic, Plus, Trash2 } from 'lucide-react'
 import { Playlist, type ClipPreviewData, type PlaylistPattern } from '../components/Playlist'
 import { STEP_COUNT } from '../audio/types'
-import { patternLength } from './patternAdapter'
+import { MAX_PATTERNS, patternColor, patternLength, patternNumbers } from './patternAdapter'
 import type { StudioProject, StudioSong } from './types'
 
 type Props = {
@@ -10,25 +10,24 @@ type Props = {
   setSong: Dispatch<SetStateAction<StudioSong>>
   activePattern: number
   onSelectPattern: (pattern: number) => void
+  /** Adds an empty pattern and selects it. */
+  onNewPattern: () => void
   /** Double-clicking a clip opens that pattern for editing. */
   onOpenPattern: (pattern: number) => void
   /** Playhead position in SONG mode, or null. */
   playStep: number | null
 }
 
-const PATTERN_NUMBERS = [1, 2, 3, 4]
-/** One color per PAT button, so clips are easy to tell apart. */
-const PATTERN_COLORS = ['#f97316', '#22d3ee', '#ec4899', '#a3e635']
 const SONG_LENGTHS = [4, 8, 16, 32, 64]
 const MAX_TRACKS = 12
 
-/** SONG mode's arrangement view: place the four patterns along the timeline. */
-export function StudioPlaylist({ project, setSong, activePattern, onSelectPattern, onOpenPattern, playStep }: Props) {
+/** SONG mode's arrangement view: place patterns along the timeline. */
+export function StudioPlaylist({ project, setSong, activePattern, onSelectPattern, onNewPattern, onOpenPattern, playStep }: Props) {
   const { song } = project
-  const patterns: PlaylistPattern[] = PATTERN_NUMBERS.map((n) => ({
+  const patterns: PlaylistPattern[] = patternNumbers(project).map((n) => ({
     id: String(n),
     name: `Pattern ${n}`,
-    color: PATTERN_COLORS[n - 1],
+    color: patternColor(n),
     // Long patterns span several bars; 24 steps is one and a half.
     bars: patternLength(project, n) / STEP_COUNT,
     preview: patternPreview(project, n),
@@ -76,7 +75,7 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
 
       <div className="flex flex-col gap-3 p-3 lg:flex-row">
         {/* Pattern picker: choose what clicking the grid places. */}
-        <div className="flex shrink-0 gap-2 lg:w-40 lg:flex-col">
+        <div className="flex shrink-0 gap-2 overflow-x-auto lg:max-h-[520px] lg:w-40 lg:flex-col lg:overflow-y-auto">
           {patterns.map((p) => {
             const n = Number(p.id)
             const selected = n === activePattern
@@ -96,6 +95,14 @@ export function StudioPlaylist({ project, setSong, activePattern, onSelectPatter
               </button>
             )
           })}
+          <button
+            type="button"
+            onClick={onNewPattern}
+            disabled={patterns.length >= MAX_PATTERNS}
+            className="flex shrink-0 items-center justify-center gap-1 rounded border border-dashed border-zinc-700 px-2 py-1.5 text-xs font-mono text-zinc-400 hover:text-orange-400 disabled:opacity-40"
+          >
+            <Plus className="w-3 h-3" /> New pattern
+          </button>
           <p className="hidden text-[10px] leading-snug text-zinc-500 lg:block">
             Click the grid to place the selected pattern. Drag to move, right-click to remove, double-click to edit.
           </p>

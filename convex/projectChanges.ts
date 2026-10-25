@@ -9,6 +9,9 @@
  */
 export const PROJECT_FIELDS = [
   'bpm', 'loop', 'metronome', 'channels', 'stepData', 'pianoNotes', 'mixerTracks', 'song', 'patternSteps',
+  // Added patterns (the + buttons). Any new StudioProject field must be listed here,
+  // or edits to it are never saved or shared.
+  'patternCount',
 ] as const
 
 export type ProjectField = (typeof PROJECT_FIELDS)[number]

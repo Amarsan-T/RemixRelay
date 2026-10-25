@@ -269,7 +269,7 @@ test('the app opens on the home screen listing projects, without allocating brow
   const { renderToStaticMarkup } = await import('react-dom/server')
   const { default: App } = await import('../src/App.tsx')
   const html = renderToStaticMarkup(React.createElement(App))
-  for (const text of ['REMIXRELAY', 'Your projects', 'New project', 'Trap Heat', 'Study Beats']) assert.ok(html.includes(text), `Missing ${text}`)
+  for (const text of ['REMIXRELAY', 'Your projects', 'New project', 'Trap Heat', 'Study Beats', 'Empty Template']) assert.ok(html.includes(text), `Missing ${text}`)
   assert.ok(!html.includes('Channel Rack'), 'The studio opens only after picking a project')
   assert.ok(!html.includes('AudioContext'))
 })
@@ -464,4 +464,37 @@ test('an instrument that fails on a step does not stop the tracks after it', asy
   playTracksAtStep(pattern.tracks, instruments, 4, 0, 0.1, (id, error) => errors.push([id, error.message]))
   assert.deepEqual(played, ['drums@4', 'melody@4', 'chords@4'])
   assert.deepEqual(errors, [['bass', 'No available buffers for note: 36']])
+})
+
+test('projects can have more than four patterns, and new ones play in PAT and SONG mode', async () => {
+  const { patternNumbers, patternColor } = await import('../src/studio/patternAdapter.ts')
+  const project = createStudioProject()
+  assert.deepEqual(patternNumbers(project), [1, 2, 3, 4])
+  project.patternCount = 6
+  assert.deepEqual(patternNumbers(project), [1, 2, 3, 4, 5, 6])
+  assert.equal(patternColor(9), patternColor(1), 'Colors repeat after eight patterns')
+  // Pattern 6 has never been touched: no step or note data exists for it yet.
+  const empty = toAudioPattern(project, 6)
+  validatePattern(empty)
+  assert.ok(empty.tracks.every((t) => (t.type === 'drums' ? Object.values(t.pattern).flat() : t.steps).length === 0))
+  // Give it a kick and place it on bar 2 of the song.
+  project.stepData[6] = { kick: [1] }
+  project.patternSteps = { 1: 16, 6: 16 }
+  project.song = { bars: 2, trackCount: 1, clips: [{ id: 'x', patternId: '6', track: 0, startBar: 1 }] }
+  const song = toAudioSong(project)
+  validatePattern(song)
+  assert.deepEqual(song.tracks.find((t) => t.id === 'kick').pattern.kick.map((h) => h.step), [16])
+})
+
+test('the Empty Template project has blank patterns and an empty song', async () => {
+  const { createDemoProjects } = await import('../src/studio/projects.ts')
+  const empty = createDemoProjects().find((p) => p.name === 'Empty Template').project
+  for (const steps of Object.values(empty.stepData)) {
+    for (const gates of Object.values(steps)) assert.ok(gates.every((g) => g === 0), 'No lit steps')
+  }
+  assert.ok(Object.values(empty.pianoNotes).every((notes) => Object.keys(notes).length === 0), 'No notes')
+  assert.equal(empty.song.clips.length, 0, 'Nothing on the playlist')
+  const pattern = toAudioPattern(empty, 1)
+  validatePattern(pattern)
+  assert.ok(pattern.tracks.every((t) => (t.type === 'drums' ? Object.values(t.pattern).flat() : t.steps).length === 0), 'Plays silence')
 })

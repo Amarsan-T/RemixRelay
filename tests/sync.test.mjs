@@ -137,3 +137,18 @@ test("a click the sync hasn't heard about yet survives an incoming edit and stil
   // When the studio reports its state, the click shows up as an unsaved change.
   assert.deepEqual(changesBetween(syncedAfter, studioAfter).map((c) => c.path.join('.')), ['stepData.1.hat_closed'])
 })
+
+test('every project field is saved, including added patterns', () => {
+  const project = createStudioProject()
+  // Fill in the optional fields too, so a new field can't be forgotten in PROJECT_FIELDS.
+  const full = { ...project, patternSteps: { 1: 32 }, patternCount: 6 }
+  for (const field of Object.keys(full)) {
+    assert.ok(PROJECT_FIELDS.includes(field), `"${field}" is missing from PROJECT_FIELDS, so edits to it are never saved`)
+  }
+  const changes = changesBetween(project, { ...project, patternCount: 6 })
+  assert.deepEqual(changes, [{ path: ['patternCount'], value: 6 }])
+  assert.ok(changes.every(isValidChange), 'The server accepts the change')
+  const saved = structuredClone(project)
+  applyChanges(saved, changes)
+  assert.equal(saved.patternCount, 6)
+})

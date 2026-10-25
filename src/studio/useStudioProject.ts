@@ -29,5 +29,6 @@ export function useStudioProject(initial?: StudioProject) {
     setChannels: fieldSetter('channels'), setStepData: fieldSetter('stepData'),
     setPianoNotes: fieldSetter('pianoNotes'), setMixerTracks: fieldSetter('mixerTracks'),
     setSong: fieldSetter('song'), setPatternSteps: fieldSetter('patternSteps'),
+    setPatternCount: fieldSetter('patternCount'),
   }
 }

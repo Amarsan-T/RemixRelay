@@ -19,6 +19,22 @@ export const MAX_PATTERN_STEPS = 256
 /** Length of a pattern nobody has resized yet, in steps: 64 = four bars. */
 export const DEFAULT_PATTERN_STEPS = 64
 
+/** Patterns a project starts with, and the most it can have. */
+export const DEFAULT_PATTERN_COUNT = 4
+export const MAX_PATTERNS = 32
+
+/** The project's pattern numbers: [1, 2, 3, ...]. */
+export function patternNumbers(project: StudioProject): number[] {
+  return Array.from({ length: project.patternCount ?? DEFAULT_PATTERN_COUNT }, (_, i) => i + 1)
+}
+
+const PATTERN_COLORS = ['#f97316', '#22d3ee', '#ec4899', '#a3e635', '#facc15', '#a78bfa', '#f87171', '#2dd4bf']
+
+/** Each pattern's color in the playlist; the colors repeat after eight patterns. */
+export function patternColor(pattern: number): string {
+  return PATTERN_COLORS[(pattern - 1) % PATTERN_COLORS.length]
+}
+
 /** How many steps a pattern plays before it loops. 16 = one bar. */
 export function patternLength(project: StudioProject, pattern: number): number {
   return project.patternSteps?.[pattern] ?? DEFAULT_PATTERN_STEPS
