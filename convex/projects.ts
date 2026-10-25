@@ -2,11 +2,10 @@ import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query } from './_generated/server'
 import type { MutationCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
-import { applyChanges, isValidChange, PROJECT_FIELDS } from './projectChanges'
+import { applyChanges, isValidChange, MAX_CHANGES_PER_SAVE, PROJECT_FIELDS } from './projectChanges'
 import type { ProjectChange, ProjectField } from './projectChanges'
 
 const MAX_PROJECTS = 200
-const MAX_CHANGES_PER_SAVE = 500
 
 /** Every project, newest first, for the home screen. */
 export const list = query({
