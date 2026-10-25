@@ -26,6 +26,8 @@ export type PadHighlight = 'add' | 'remove' | 'change'
 export interface CoachTarget {
   item: NoteSuggestion
   token: number
+  /** True only for an explicit Show click: then a floating panel covering the target steps aside. */
+  uncover?: boolean
 }
 
 /** Is this the suggestion being shown? Matched by what it changes, not by list position. */
@@ -64,7 +66,7 @@ export function pianoGhosts(items: readonly ResolvedSuggestion[], pattern: numbe
     const label = `AI suggestion: ${describeSuggestion(item)}${item.why ? `. ${item.why}` : ''}`
     const key = `ai-${index}`
     // The shown note is marked; the token makes it scroll into view again on every Show.
-    const focus = isTarget(item, target) ? { focusToken: target!.token } : {}
+    const focus = isTarget(item, target) ? { focusToken: target!.token, focusUncover: !!target!.uncover } : {}
     if (item.action === 'add') {
       ghosts.push({ key, kind: 'add', pitch, start: item.step, duration: item.length ?? 2, label, ...focus })
       return

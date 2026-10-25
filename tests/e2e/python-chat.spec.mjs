@@ -92,6 +92,13 @@ test('React to local Convex to Python HTTP preserves chat and memory after refre
     // It ended up under the floating chat, so the chat stepped aside (conversation kept).
     await expect(page.getByLabel('Open AI chat')).toBeVisible()
     expect(await far.evaluate(ghost=>{const r=ghost.getBoundingClientRect();return !document.elementFromPoint(r.left+r.width/2,r.top+r.height/2)?.closest('[data-floating-panel]')})).toBe(true)
+    // Each Show reveals once: switching views afterwards neither re-scrolls nor closes the reopened chat.
+    await page.getByLabel('Open AI chat').click()
+    await page.getByRole('button',{name:'Channel Rack',exact:true}).click()
+    await page.getByRole('button',{name:'Piano Roll',exact:true}).click()
+    await expect(far).toHaveAttribute('data-coach-focused','')
+    await page.waitForTimeout(900)
+    await expect(panel).toBeVisible()
     await page.screenshot({path:'test-results/browser/coach-show-melodic.png'})
     // Show on a drum suggestion opens the Channel Rack at that pad.
     await coach.getByRole('button',{name:'Show: Light step 1 on Kick 808'}).click()
@@ -119,7 +126,6 @@ test('React to local Convex to Python HTTP preserves chat and memory after refre
     // Clearing removes the highlights; the chat can show them again.
     await coach.getByRole('button',{name:'Clear highlights'}).click()
     await expect(coach).toHaveCount(0)
-    await page.getByLabel('Open AI chat').click()
     await panel.getByRole('button',{name:'Show in editor'}).click()
     await expect(coach).toContainText('All done!')
     await panel.getByRole('button',{name:'Hide highlights'}).click()

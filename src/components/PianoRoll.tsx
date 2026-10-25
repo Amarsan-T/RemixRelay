@@ -74,6 +74,8 @@ export type GhostNote = {
   label: string
   /** Set on the note someone asked to see: it is emphasized and scrolled into view each time this changes. */
   focusToken?: number
+  /** Let a floating panel that covers the focused note step aside (explicit Show only). */
+  focusUncover?: boolean
 }
 
 type Drag =
@@ -543,7 +545,7 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
               }}
             >
               {cellH >= 12 && <span>{ghost.kind === 'remove' ? '✕' : ghost.kind === 'change-from' ? '↕' : `+ ${midiToName(ghost.pitch)}`}</span>}
-              {ghost.focusToken !== undefined && <Reveal token={ghost.focusToken} />}
+              {ghost.focusToken !== undefined && <Reveal token={ghost.focusToken} uncover={ghost.focusUncover} />}
             </div>
           ))}
 

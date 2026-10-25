@@ -117,12 +117,13 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   // The piano roll shows the selected channel, or the first melodic one if a drum is selected.
   const melodicChannels = channels.filter((channel) => channel.type !== 'drum');
   const pianoChannelId = (melodicChannels.find((channel) => channel.id === selectedChannelId) ?? melodicChannels[0])?.id;
-  const showSuggestion = (item: ResolvedSuggestion) => {
+  // `uncover` is set only by Show buttons; automatic showing never moves the chat.
+  const showSuggestion = (item: ResolvedSuggestion, uncover = false) => {
     const target = viewFor(item);
     setActivePattern(target.pattern);
     setSelectedChannelId(target.channelId);
     setActiveTab(target.view);
-    setCoachTarget((previous) => ({ item, token: (previous?.token ?? 0) + 1 }));
+    setCoachTarget((previous) => ({ item, token: (previous?.token ?? 0) + 1, uncover }));
   };
   // Never called on its own: only from Apply buttons the user pressed.
   const applyCoachSuggestions = (items: NoteSuggestion[]) => updateProject((previous) => applySuggestions(previous, items));
@@ -543,7 +544,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             view={activeTab}
             pattern={activePattern}
             pianoChannelId={pianoChannelId}
-            onGo={showSuggestion}
+            onGo={(item) => showSuggestion(item, true)}
             onApply={applyCoachSuggestions}
             onClear={noteCoach.onClear}
           />
@@ -709,7 +710,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                                 : 'bg-black/25'
                             }`} />
                             {coachPad && <span aria-hidden="true" className={`coach-pad ${coachPad.kind}${coachPad.focused ? ' focused' : ''}`} />}
-                            {coachPad?.focused && coachTarget && <Reveal token={coachTarget.token} />}
+                            {coachPad?.focused && coachTarget && <Reveal token={coachTarget.token} uncover={coachTarget.uncover} />}
                           </button>
                         );
                       })}
