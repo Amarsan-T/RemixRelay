@@ -30,3 +30,6 @@ playwright-report
 *.njsproj
 *.sln
 *.sw?
+postman
+.postman
+backend/__pycache__
