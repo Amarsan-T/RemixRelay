@@ -11,7 +11,7 @@ import { toStored } from './studio/projectSync'
 import { useProjectSync } from './studio/useProjectSync'
 import type { StudioProject } from './studio/types'
 import { AeroBackground, GlassButton, GlassPanel } from './ui/Glass'
-import { credentialFor, finishCredential, newCredential, rememberCredential, useManagementCredentials } from './studio/projectManagement'
+import { credentialFor, finishCredential, forgetCredential, newCredential, rememberCredential, useManagementCredentials } from './studio/projectManagement'
 import type { Id } from '../convex/_generated/dataModel'
 
 // The app with projects saved in Convex. A project's link (?project=<id>)
@@ -26,7 +26,6 @@ function SyncedApp() {
   const [creationError, setCreationError] = useState<string | null>(null)
   const [seedError, setSeedError] = useState(false)
   const deleted = useManagementCredentials()
-  const [lastDeleted, setLastDeleted] = useState<{ id: string; name: string; lifecycle: number }>()
   // Only the home screen needs every project; skipping it in the studio keeps
   // each save from re-sending the whole list to every open browser.
   const projects = useQuery(api.projects.list, openId ? 'skip' : {})
@@ -82,24 +81,18 @@ function SyncedApp() {
         await rename({ id: entry.id as Id<'projects'>, key: credentialFor(entry.id)?.key ?? '', name, expectedName: entry.name })
       }}
       onDeleteProject={async entry => {
-        const credential = credentialFor(entry.id)
-        await remove({ id: entry.id as Id<'projects'>, key: credential?.key ?? '', expectedName: entry.name,
-          expectedVersion: entry.version!, expectedLifecycle: entry.lifecycle ?? 0 })
-        const recovery = { id: entry.id, name: entry.name, lifecycle: (entry.lifecycle ?? 0) + 1 }
-        setLastDeleted(recovery)
-        // Even if storage fills now, the in-memory Undo and original key remain.
-        try { rememberCredential(entry.id, { key: credential!.key, deletedName: entry.name, deletedLifecycle: recovery.lifecycle }) }
-        catch { setCreationError('The project is retained, but this browser could not remember recovery. Use Undo before leaving.') }
+        // Permanent: the server deletes the project and its chat. The key has nothing left to manage.
+        await remove({ id: entry.id as Id<'projects'>, key: credentialFor(entry.id)?.key ?? '' })
+        forgetCredential(entry.id)
       }}
-      deletedProjects={lastDeleted && !deleted.some(entry => entry.id === lastDeleted.id) ? [lastDeleted, ...deleted] : deleted}
-      lastDeletedId={lastDeleted?.id}
+      // Only projects soft-deleted before permanent deletion existed can still be restored.
+      deletedProjects={deleted}
       onRestoreProject={async id => {
-        const recovery = deleted.find(entry => entry.id === id) ?? (lastDeleted?.id === id ? lastDeleted : undefined)
+        const recovery = deleted.find(entry => entry.id === id)
         const credential = credentialFor(id)
         if (!recovery || !credential) throw new Error('Management access unavailable')
         await restore({ id: id as Id<'projects'>, key: credential.key, expectedLifecycle: recovery.lifecycle })
         rememberCredential(id, { key: credential.key })
-        if (lastDeleted?.id === id) setLastDeleted(undefined)
       }}
       onNewProject={() => {
         if (creating) return

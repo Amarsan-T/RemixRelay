@@ -79,4 +79,13 @@ export default defineSchema({
   })
     .index('by_project_started', ['projectId', 'startedAt'])
     .index('by_started', ['startedAt']),
+
+  /**
+   * Database-wide markers. 'initialized' is written by the first permanent
+   * deletion, so a database whose projects were all deleted is not mistaken
+   * for a brand-new one and re-seeded with demos.
+   */
+  appState: defineTable({
+    key: v.string(),
+  }).index('by_key', ['key']),
 })

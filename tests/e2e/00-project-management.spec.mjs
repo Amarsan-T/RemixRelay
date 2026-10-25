@@ -26,13 +26,11 @@ async function credential(page, id) {
     return JSON.parse(localStorage.getItem(storageKey)).key
   }, id)
 }
-async function confirmDelete(page, id, name) {
+/** One click on Delete: no dialog, no confirmation, and the card is gone. */
+async function deleteNow(page, id) {
   await action(page, id, 'Delete')
-  const dialog = page.getByRole('dialog')
-  await expect(dialog.getByRole('button', { name: 'Delete project', exact: true })).toBeDisabled()
-  await dialog.getByLabel('Confirm project name').fill(name)
-  await dialog.getByRole('button', { name: 'Delete project', exact: true }).click()
-  await expect(dialog).toHaveCount(0)
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect(card(page, id)).toHaveCount(0)
 }
 
 test.beforeEach(async ({ page }, info) => {
@@ -40,12 +38,12 @@ test.beforeEach(async ({ page }, info) => {
   await page.route(cloud, route => route.abort())
 })
 
-// This file runs first on the fresh fixture. A tombstone must not be mistaken
-// for a brand-new database; no admin/reset helper or public ownership claim.
-test('an empty cloud dashboard with a deleted project does not seed or hang', async ({ page }, info) => {
+// This file runs first on the fresh fixture. Deleting the only project must not
+// make the database look brand-new; no admin/reset helper or public ownership claim.
+test('an empty cloud dashboard after deleting the only project does not seed or hang', async ({ page }, info) => {
   const db = client(), key = randomBytes(32).toString('hex')
   const id = await db.mutation(anyApi.projects.create, { name: 'Only project', color: '#22d3ee', data: { bpm: 97, channels: [], stepData: {}, pianoNotes: {} }, managementKeyHash: createHash('sha256').update(key).digest('hex') })
-  await db.mutation(anyApi.projects.remove, { id, key, expectedName: 'Only project', expectedVersion: 1, expectedLifecycle: 0 })
+  await db.mutation(anyApi.projects.remove, { id, key })
   await page.goto(info.config.metadata.syncOrigin)
   await expect(page.getByText('No projects yet. Start one with New project.')).toBeVisible()
   await page.reload()
@@ -59,7 +57,6 @@ test('an empty cloud dashboard with a deleted project does not seed or hang', as
   await page.getByRole('button', { name: 'New project', exact: true }).click()
   await expect(page.getByLabel('Tempo BPM')).toBeVisible()
 })
-
 test('rename updates a collaborator without changing music; share links confer no management access', async ({ page, browser }, info) => {
   const db = client(), origin = info.config.metadata.syncOrigin
   const { id, url } = await create(page, origin)
@@ -92,13 +89,6 @@ test('rename updates a collaborator without changing music; share links confer n
     const after = await db.query(anyApi.projects.get, { id })
     expect(after.data).toEqual(before.data)
     expect(after.version).toBe(before.version)
-    await action(page, id, 'Delete')
-    await peer.getByLabel('Tempo BPM').fill('119'); await peer.getByLabel('Tempo BPM').press('Enter')
-    await expect(peer.getByLabel('Save status')).toHaveText('Saved')
-    await page.getByLabel('Confirm project name').fill(after.name)
-    await page.getByRole('dialog').getByRole('button', { name: 'Delete project', exact: true }).click()
-    await expect(page.getByRole('dialog').getByRole('alert')).toContainText('project changed')
-    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
     await peer.getByRole('button', { name: 'Home', exact: true }).click()
     await card(peer, id).getByRole('button', { name: /^Project actions/ }).click()
     await expect(peer.getByRole('menuitem', { name: 'Delete', exact: true })).toBeDisabled()
@@ -109,14 +99,15 @@ test('rename updates a collaborator without changing music; share links confer n
   } finally { await second.close() }
 })
 
-test('delete stops collaborators and preserves chat/music; Undo and refresh Restore work', async ({ page, browser }, info) => {
+test('one-click Delete is permanent: music and chat are gone, collaborators stop, others untouched', async ({ page, browser }, info) => {
   const db = client(), origin = info.config.metadata.syncOrigin
+  const other = await create(page, origin)
+  const otherBefore = await db.query(anyApi.projects.get, { id: other.id })
   const { id, url } = await create(page, origin)
   await page.getByRole('button', { name: 'Kick 808 step 3', exact: true }).click()
   await expect(page.getByLabel('Save status')).toHaveText('Saved')
-  await db.mutation(anyApi.chat.send, { projectId: id, requestId: 'local-memory-1234', content: 'Keep this conversation' })
+  await db.mutation(anyApi.chat.send, { projectId: id, requestId: 'local-memory-1234', content: 'Delete this conversation' })
   await expect.poll(async () => (await db.query(anyApi.chat.list, { projectId: id })).at(-1).status).toBe('error')
-  const before = await db.query(anyApi.projects.get, { id })
   const second = await browser.newContext()
   await second.route(cloud, route => route.abort())
   await second.addInitScript(() => {
@@ -132,43 +123,30 @@ test('delete stops collaborators and preserves chat/music; Undo and refresh Rest
     await peer.getByRole('button', { name: 'Play', exact: true }).click()
     await expect(peer.locator('footer')).toContainText('AUDIO: PLAYING')
     await page.getByRole('button', { name: 'Home', exact: true }).click()
-    await action(page, id, 'Delete')
-    await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click()
-    expect(await db.query(anyApi.projects.get, { id })).not.toBeNull()
-    await confirmDelete(page, id, before.name)
-    await expect(card(page, id)).toHaveCount(0)
+    await deleteNow(page, id)
+    // Gone for good: no Undo, no Restore, nothing left on the server.
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('region', { name: 'Recently deleted projects' })).toHaveCount(0)
+    expect(await db.query(anyApi.projects.get, { id })).toBeNull()
+    expect(await db.query(anyApi.chat.list, { projectId: id })).toEqual([])
+    expect(await page.evaluate(id => Object.keys(localStorage).some(key => key.startsWith('remixrelay:management:') && key.endsWith(':' + id)), id)).toBe(false)
+    // The collaborator's session closes in real time and its audio stops.
     await expect(peer.getByText(/This project doesn't exist or this session is out of date/)).toBeVisible()
     await expect.poll(() => peer.evaluate(() => window.__contexts.filter(context => context.state !== 'closed').length)).toBe(baseline)
-    await expect(peer.getByRole('button', { name: 'Download recovery copy' })).toBeVisible()
-    expect(await db.query(anyApi.chat.list, { projectId: id })).toEqual([])
     const visitor = await second.newPage()
     await visitor.goto(url)
     await expect(visitor.getByRole('button', { name: 'Back to projects' })).toBeVisible()
-    await page.getByRole('button', { name: 'Undo', exact: true }).click()
-    await expect(card(page, id)).toBeVisible()
-    expect((await db.query(anyApi.projects.get, { id })).data).toEqual(before.data)
-    expect((await db.query(anyApi.chat.list, { projectId: id }))[0].content).toBe('Keep this conversation')
-    // An old session stays stopped until explicitly reopened, even after Undo.
-    await expect(peer.getByLabel('Tempo BPM')).toHaveCount(0)
-    await expect(visitor.getByRole('button', { name: 'Back to projects' })).toBeVisible()
-    await expect(visitor.getByText('Opening project...', { exact: true })).toHaveCount(0)
     await visitor.close()
-    await peer.reload()
-    await expect(peer.getByRole('button', { name: 'Kick 808 step 3', exact: true })).toHaveAttribute('aria-pressed', 'true')
-    await confirmDelete(page, id, before.name)
     await page.reload()
-    await page.getByRole('region', { name: 'Recently deleted projects' }).getByRole('button', { name: 'Restore', exact: true }).click()
-    await expect(card(page, id)).toBeVisible()
-    expect((await db.query(anyApi.projects.get, { id })).data).toEqual(before.data)
-    await peer.goto(origin + '/?project=invalid-link')
-    await expect(peer.getByRole('button', { name: 'Back to projects' })).toBeVisible()
+    await expect(card(page, id)).toHaveCount(0)
+    await expect(card(page, other.id)).toBeVisible()
+    expect(await db.query(anyApi.projects.get, { id: other.id })).toEqual(otherBefore)
   } finally { await second.close() }
 })
 
-test('a save queued while offline cannot replay across delete and restore', async ({ page, browser }, info) => {
+test('a save queued while offline cannot recreate a permanently deleted project', async ({ page, browser }, info) => {
   const db = client(), origin = info.config.metadata.syncOrigin
   const { id, url } = await create(page, origin)
-  const before = await db.query(anyApi.projects.get, { id })
   const second = await browser.newContext()
   await second.route(cloud, route => route.abort())
   const peer = await second.newPage()
@@ -179,12 +157,11 @@ test('a save queued while offline cannot replay across delete and restore', asyn
     await peer.getByRole('button', { name: 'Kick 808 step 7', exact: true }).click()
     await expect(peer.getByLabel('Save status')).toHaveText('Saving')
     await page.getByRole('button', { name: 'Home', exact: true }).click()
-    await confirmDelete(page, id, before.name)
-    await page.getByRole('button', { name: 'Undo', exact: true }).click()
-    await expect(card(page, id)).toBeVisible()
+    await deleteNow(page, id)
     await second.setOffline(false)
+    // The collaborator keeps their own unsaved copy as a local download; the server project stays deleted.
     await expect(peer.getByRole('button', { name: 'Download recovery copy' })).toBeVisible()
-    expect((await db.query(anyApi.projects.get, { id })).data).toEqual(before.data)
+    expect(await db.query(anyApi.projects.get, { id })).toBeNull()
     const download = peer.waitForEvent('download')
     await peer.getByRole('button', { name: 'Download recovery copy' }).click()
     const recovery = await download
@@ -193,6 +170,7 @@ test('a save queued while offline cannot replay across delete and restore', asyn
     for await (const chunk of await recovery.createReadStream()) chunks.push(chunk)
     expect(JSON.parse(Buffer.concat(chunks).toString()).stepData[1].kick[6]).toBe(1)
     await peer.reload()
-    await expect(peer.getByRole('button', { name: 'Kick 808 step 7', exact: true })).toHaveAttribute('aria-pressed', 'false')
+    await expect(peer.getByRole('button', { name: 'Back to projects' })).toBeVisible()
+    expect(await db.query(anyApi.projects.get, { id })).toBeNull()
   } finally { await second.setOffline(false); await second.close() }
 })

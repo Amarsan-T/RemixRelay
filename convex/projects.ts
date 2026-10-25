@@ -1,7 +1,8 @@
 import { ConvexError, v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query } from './_generated/server'
-import type { MutationCtx } from './_generated/server'
+import type { MutationCtx, QueryCtx } from './_generated/server'
 import type { Id } from './_generated/dataModel'
+import { internal } from './_generated/api'
 import { applyChanges, isValidChange, MAX_CHANGES_PER_SAVE, PROJECT_FIELDS } from './projectChanges'
 import type { ProjectChange, ProjectField } from './projectChanges'
 import { isActive, publicProject, requireManagement, unavailable } from './projectAccess'
@@ -16,8 +17,14 @@ export const list = query({
     .withIndex('by_deletedAt_updatedAt', q => q.eq('deletedAt', undefined)).order('desc').take(MAX_PROJECTS)).map(publicProject),
 })
 
-/** Includes tombstones so deleting the last visible project never seeds demos. */
-export const hasAny = query({ args: {}, handler: async ctx => !!(await ctx.db.query('projects').first()) })
+/** True once the database has ever held a project, so deleting the last one never seeds demos. */
+export const hasAny = query({ args: {}, handler: ctx => everUsed(ctx) })
+
+async function everUsed(ctx: QueryCtx) {
+  // Older soft-deleted projects still count, as before permanent deletion.
+  return !!(await ctx.db.query('projects').first()) ||
+    !!(await ctx.db.query('appState').withIndex('by_key', q => q.eq('key', 'initialized')).first())
+}
 
 /** One project, or null when the id is malformed or the project is gone (e.g. an old share link). */
 export const get = query({
@@ -55,25 +62,66 @@ export const rename = mutation({
   },
 })
 
+/**
+ * Permanently deletes a project the caller manages: the project (its music)
+ * at once, then its chat. There is no undo. Every open session sees the
+ * project disappear through its subscription. The expected* arguments from
+ * the earlier confirm-and-undo flow are accepted and ignored, so browsers
+ * still running that version keep working.
+ */
 export const remove = mutation({
-  args: { id: v.id('projects'), key: v.string(), expectedName: v.string(), expectedVersion: v.number(), expectedLifecycle: v.number() },
-  handler: async (ctx, { id, key, expectedName, expectedVersion, expectedLifecycle }) => {
-    const project = await requireManagement(await ctx.db.get(id), key)
-    // A replay may acknowledge this deletion, but must never delete a restored generation.
-    if (project.deletedAt !== undefined && (project.lifecycle ?? 0) === expectedLifecycle + 1) return
-    if (!isActive(project)) throw unavailable()
-    if (project.name !== expectedName || project.version !== expectedVersion || (project.lifecycle ?? 0) !== expectedLifecycle) {
-      throw new ConvexError('The project changed. Close this dialog and review it before deleting.')
-    }
-    await ctx.db.patch(id, { deletedAt: Date.now(), lifecycle: expectedLifecycle + 1 })
-    // The chat enforces one pending reply per project. Keep history and attempts;
-    // invalidate the current generation even when a provider call is in flight.
-    const pending = await ctx.db.query('chatMessages').withIndex('by_project_status', q => q.eq('projectId', id).eq('status', 'pending')).take(101)
-    if (pending.length > 100) throw new ConvexError('This project needs an operator to review its pending replies before deletion.')
-    for (const message of pending) {
-      await ctx.db.patch(message._id, { status: 'error', content: 'This reply was stopped because the project was deleted.' })
-    }
+  args: {
+    id: v.id('projects'), key: v.string(),
+    expectedName: v.optional(v.string()), expectedVersion: v.optional(v.number()), expectedLifecycle: v.optional(v.number()),
   },
+  handler: async (ctx, { id, key }) => {
+    const project = await ctx.db.get(id)
+    // Already gone (a double click or a retried request): nothing left to delete or reveal.
+    if (project === null) return
+    await requireManagement(project, key)
+    // Projects soft-deleted before permanent deletion stay restorable; never purge them here.
+    if (!isActive(project)) throw unavailable()
+    if (!(await ctx.db.query('appState').withIndex('by_key', q => q.eq('key', 'initialized')).first())) {
+      await ctx.db.insert('appState', { key: 'initialized' })
+    }
+    await ctx.db.delete(id)
+    await purgeRecords(ctx, id)
+  },
+})
+
+/** Chat records removed per transaction; the rest continue in a scheduled job. */
+const PURGE_BATCH = 200
+/** Matches the global hourly AI budget in convex/chat.ts. */
+const ATTEMPT_RETENTION_MS = 60 * 60_000
+
+/**
+ * Deletes a deleted project's chat messages, then its chat attempts once they
+ * are an hour old. Recent attempts still count toward the global hourly AI
+ * budget, so deleting a project cannot be used to get around it.
+ */
+async function purgeRecords(ctx: MutationCtx, projectId: Id<'projects'>) {
+  // Only ever for a project that no longer exists.
+  if (await ctx.db.get(projectId)) return
+  const messages = await ctx.db.query('chatMessages').withIndex('by_project', q => q.eq('projectId', projectId)).take(PURGE_BATCH)
+  for (const message of messages) await ctx.db.delete(message._id)
+  if (messages.length === PURGE_BATCH) {
+    await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProject, { projectId })
+    return
+  }
+  const cutoff = Date.now() - ATTEMPT_RETENTION_MS
+  const old = await ctx.db.query('chatAttempts').withIndex('by_project_started', q => q.eq('projectId', projectId).lt('startedAt', cutoff)).take(PURGE_BATCH)
+  for (const attempt of old) await ctx.db.delete(attempt._id)
+  if (old.length === PURGE_BATCH) {
+    await ctx.scheduler.runAfter(0, internal.projects.purgeDeletedProject, { projectId })
+    return
+  }
+  const recent = await ctx.db.query('chatAttempts').withIndex('by_project_started', q => q.eq('projectId', projectId)).first()
+  if (recent) await ctx.scheduler.runAt(recent.startedAt + ATTEMPT_RETENTION_MS + 1000, internal.projects.purgeDeletedProject, { projectId })
+}
+
+export const purgeDeletedProject = internalMutation({
+  args: { projectId: v.id('projects') },
+  handler: (ctx, { projectId }) => purgeRecords(ctx, projectId),
 })
 
 export const restore = mutation({
@@ -101,7 +149,7 @@ export const save = mutation({
 export const seedDemos = mutation({
   args: { projects: v.array(v.object({ name: v.string(), color: v.string(), updatedAt: v.number(), data: v.any() })) },
   handler: async (ctx, { projects }) => {
-    if (await ctx.db.query('projects').first()) return 0
+    if (await everUsed(ctx)) return 0
     for (const project of projects) await ctx.db.insert('projects', { ...project, version: 1 })
     return projects.length
   },

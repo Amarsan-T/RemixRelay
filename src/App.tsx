@@ -7,8 +7,6 @@ import { createBlankProject, createDemoProjects, type ProjectEntry } from './stu
 function App() {
   const [projects, setProjects] = useState<ProjectEntry[]>(createDemoProjects)
   const [openId, setOpenId] = useState<string | null>(null)
-  const [deleted, setDeleted] = useState<ProjectEntry[]>([])
-  const [lastDeletedId, setLastDeletedId] = useState<string>()
   const open = projects.find((p) => p.id === openId)
 
   if (open) {
@@ -33,10 +31,9 @@ function App() {
       projects={projects}
       onOpenProject={setOpenId}
       onRenameProject={async (entry, name) => setProjects(all => all.map(project => project.id === entry.id ? { ...project, name: name.trim(), updatedAt: Date.now() } : project))}
-      onDeleteProject={async entry => { setProjects(all => all.filter(project => project.id !== entry.id)); setDeleted(all => [entry, ...all]); setLastDeletedId(entry.id) }}
-      deletedProjects={deleted}
-      lastDeletedId={lastDeletedId}
-      onRestoreProject={async id => { const entry = deleted.find(project => project.id === id); if (entry) setProjects(all => [...all, entry]); setDeleted(all => all.filter(project => project.id !== id)) }}
+      // Permanent, like the synced app: no undo.
+      onDeleteProject={async entry => { setProjects(all => all.filter(project => project.id !== entry.id)) }}
+      onRestoreProject={async () => {}}
       onNewProject={() => {
         const entry = createBlankProject(projects)
         setProjects([entry, ...projects])
