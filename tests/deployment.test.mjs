@@ -99,9 +99,32 @@ test('the actual hosted build fails before compilation when configuration is mis
   assert.doesNotMatch(result.stdout, /building client/)
 })
 
+test('the standard npm build cannot default to local mode on Vercel', () => {
+  const env = { ...process.env, VERCEL: '1' }
+  delete env.REMIXRELAY_DEPLOYMENT_MODE
+  const result = spawnSync(process.execPath, ['scripts/vercel-build.mjs', '--local-default'], {
+    cwd: new URL('../', import.meta.url), env, encoding: 'utf8',
+  })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /REMIXRELAY_DEPLOYMENT_MODE/)
+  assert.doesNotMatch(result.stdout, /building client/)
+})
+
+test('the standard hosted build rejects the known dev deployment', () => {
+  const result = spawnSync(process.execPath, ['scripts/vercel-build.mjs', '--local-default'], {
+    cwd: new URL('../', import.meta.url), encoding: 'utf8',
+    env: { ...process.env, VERCEL: '1', REMIXRELAY_DEPLOYMENT_MODE: 'collaborative-demo', REMIXRELAY_CONVEX_PRODUCTION_NAME: developmentDeployment, VITE_CONVEX_URL: developmentUrl },
+  })
+  assert.equal(result.status, 1)
+  assert.match(result.stderr, /existing development deployment/)
+  assert.doesNotMatch(result.stdout, /building client/)
+})
+
 test('Vercel uses the guarded build and leaves automatic Git publishing disabled', () => {
   const config = JSON.parse(readFileSync(new URL('../vercel.json', import.meta.url), 'utf8'))
-  assert.equal(config.buildCommand, 'npm run build:vercel')
+  const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
+  assert.equal(config.buildCommand, 'npm run build')
+  assert.equal(pkg.scripts.build, 'node scripts/vercel-build.mjs --local-default')
   assert.equal(config.outputDirectory, 'dist')
   assert.equal(config.git.deploymentEnabled, false)
   assert.equal(config.rewrites, undefined, 'the standalone audio-test HTML must remain directly accessible')
