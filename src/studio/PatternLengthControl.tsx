@@ -45,7 +45,7 @@ export function PatternLengthControl({ project, pattern, setPatternSteps, setSte
     else setDraft(null)
   }
 
-  const button = 'grid h-5 w-5 place-items-center rounded text-zinc-400 hover:bg-zinc-700 hover:text-orange-400 disabled:opacity-30'
+  const button = 'aero-pill aero-smoke h-5 w-5 disabled:opacity-30'
   return (
     <div className="flex items-center gap-1 text-[11px] font-mono text-zinc-400" title="Steps before the pattern loops (16 = one bar)">
       <span>Length</span>
@@ -65,7 +65,7 @@ export function PatternLengthControl({ project, pattern, setPatternSteps, setSte
           if (e.key === 'Enter') commit()
           if (e.key === 'Escape') setDraft(null)
         }}
-        className="h-6 w-12 rounded border border-zinc-700 bg-zinc-900 px-1 text-center font-bold text-orange-400 outline-none"
+        className="aero-lcd h-6 w-12 rounded-full px-1 text-center font-bold outline-none"
       />
       <button type="button" aria-label="Longer pattern" disabled={length >= MAX_PATTERN_STEPS} onClick={() => apply(Math.floor(length / 4) * 4 + 4)} className={button}>
         <Plus className="h-3 w-3" />

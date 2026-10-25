@@ -192,6 +192,56 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.8), 0 1px 0 rgba(255, 255, 255, 0.12);
   }
 
+  /* Red and amber glossy variants: mute and solo. */
+  .aero-ruby {
+    color: #fff;
+    text-shadow: 0 1px 1px rgba(90, 0, 0, 0.5);
+    background: linear-gradient(180deg, #ff8a8a 0%, #e53935 55%, #b71c1c 100%);
+    border: 1px solid #8e1515;
+    box-shadow: 0 0 8px rgba(255, 70, 70, 0.45);
+  }
+  .aero-amber {
+    color: #3a2400;
+    background: linear-gradient(180deg, #ffe08a 0%, #ffb627 55%, #e08e00 100%);
+    border: 1px solid #a86a00;
+    box-shadow: 0 0 8px rgba(255, 190, 60, 0.5);
+  }
+
+  /* ---- Workspace panels ------------------------------------------------- */
+
+  /* Dark smoky panel for the editors. Mostly opaque and NOT blurred: the grids
+     inside redraw constantly while playing, and blurring behind them is costly. */
+  .aero-panel {
+    background: linear-gradient(180deg, rgba(30, 50, 68, 0.94), rgba(12, 22, 32, 0.96));
+    border: 1px solid rgba(160, 220, 255, 0.28);
+    border-radius: 18px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.22),
+      0 14px 40px rgba(0, 40, 80, 0.45);
+  }
+
+  /* Thin, tinted scrollbars inside panels instead of the default gray bars. */
+  .aero-panel, .aero-panel * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(127, 227, 255, 0.35) transparent;
+  }
+
+  /* A panel's title strip, with its own shine. */
+  .aero-panel-header {
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.03));
+    border-bottom: 1px solid rgba(160, 220, 255, 0.18);
+  }
+
+  /* A smaller dark glass card inside a panel (mixer strips). */
+  .aero-strip {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(0, 0, 0, 0.18));
+    border: 1px solid rgba(160, 220, 255, 0.2);
+    border-radius: 14px;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  }
+
   /* ---- Typography ------------------------------------------------------- */
 
   /* Metro-style headline: big, thin, tight. */
@@ -199,6 +249,42 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
     font-weight: 300;
     letter-spacing: -0.02em;
     line-height: 1.05;
+  }
+
+  /* ---- Metro ------------------------------------------------------------ */
+
+  /* Windows Phone "pivot" tabs: big, thin, lowercase words. The active one is
+     solid with an accent bar; the rest fade back. */
+  .metro-pivot {
+    position: relative;
+    font-size: 1.15rem;
+    font-weight: 300;
+    text-transform: lowercase;
+    letter-spacing: -0.01em;
+    /* 0.72 keeps inactive tabs readable (4.9:1); bold + underline marks the active one. */
+    color: rgba(11, 57, 84, 0.72);
+    transition: color 150ms;
+  }
+  .metro-pivot:hover { color: rgba(11, 57, 84, 0.9); }
+  .metro-pivot[aria-pressed='true'] { color: var(--color-aero-ink); font-weight: 600; }
+  .metro-pivot[aria-pressed='true']::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+    height: 3px;
+    background: #1ba1e2; /* Metro cyan */
+  }
+
+  /* The huge, faint view name behind the panels. */
+  .metro-watermark {
+    font-weight: 200;
+    letter-spacing: -0.04em;
+    line-height: 0.85;
+    text-transform: lowercase;
+    color: rgba(255, 255, 255, 0.55);
+    white-space: nowrap;
   }
 }
 
