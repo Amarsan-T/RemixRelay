@@ -11,6 +11,8 @@ export interface StudioChannel {
   defaultNote?: string
   /** Instrument preset (SOUND_PRESETS id). Unset plays the default studio synth. */
   sound?: string
+  /** Instrument picked for one pattern, by pattern number; overrides `sound` there. '' is the studio synth. */
+  patternSounds?: Record<number, string>
 }
 
 export interface PianoNote {

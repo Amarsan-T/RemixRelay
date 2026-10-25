@@ -19,6 +19,7 @@ interface Channel {
   solo?: boolean
   defaultNote?: string
   sound?: string
+  patternSounds?: Record<string, string>
 }
 interface Note { step: number; note: string; length: number; velocity?: number }
 interface MixerTrack { id: number; name: string; vol: number; pan?: number; filter?: number; delay?: number; dist?: number; mute?: boolean; solo?: boolean }
@@ -43,9 +44,9 @@ const DEFAULT_PATTERN_COUNT = 4
 export const MAX_CONTEXT_CHARS = 9000
 
 const percent = (value: number | undefined) => `${Math.round((value ?? 0) * 100)}%`
-const instrumentOf = (channel: Channel) => channel.type === 'drum'
+const instrumentOf = (channel: Channel, sound = channel.sound) => channel.type === 'drum'
   ? 'drum sound'
-  : SOUND_PRESETS.find((preset) => preset.id === channel.sound)?.name ?? 'Studio Synth (default)'
+  : SOUND_PRESETS.find((preset) => preset.id === sound)?.name ?? 'Studio Synth (default)'
 /** The note a hit plays without a piano-roll note (patternAdapter.defaultHit). */
 const defaultNote = (channel: Channel) => channel.defaultNote ?? (channel.type === 'pitched' ? 'C2' : 'A4')
 
@@ -117,7 +118,10 @@ export function describeProject(name: string, project: ProjectData | null): stri
     const length = Math.max(1, Math.min(256, Math.floor(project.patternSteps?.[pattern] ?? DEFAULT_PATTERN_STEPS) || DEFAULT_PATTERN_STEPS))
     const parts = channels.flatMap((channel) => {
       const text = channelPattern(project, pattern, channel, length)
-      return text ? [`  - ${channel.name}: ${text}`] : []
+      // A pattern can give the channel its own instrument (patternAdapter.channelSound).
+      const own = channel.patternSounds?.[pattern]
+      const sound = own !== undefined && (own || undefined) !== (channel.sound || undefined) ? ` (on ${instrumentOf(channel, own)})` : ''
+      return text ? [`  - ${channel.name}${sound}: ${text}`] : []
     })
     if (!parts.length) { empty.push(pattern); continue }
     const bars = length / 16

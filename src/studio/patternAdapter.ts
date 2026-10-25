@@ -35,6 +35,11 @@ export function patternColor(pattern: number): string {
   return PATTERN_COLORS[(pattern - 1) % PATTERN_COLORS.length]
 }
 
+/** The instrument a channel plays in a pattern (SOUND_PRESETS id), or undefined for the studio synth. */
+export function channelSound(channel: StudioChannel, pattern: number): string | undefined {
+  return (channel.patternSounds?.[pattern] ?? channel.sound) || undefined
+}
+
 /** How many steps a pattern plays before it loops. 16 = one bar. */
 export function patternLength(project: StudioProject, pattern: number): number {
   return project.patternSteps?.[pattern] ?? DEFAULT_PATTERN_STEPS
@@ -99,7 +104,11 @@ function mergeNotes(steps: NoteStep[]): NoteStep[] {
 type Placement = { pattern: number, offset: number }
 
 /** Pure conversion; no scheduling or playback state. Anything past `totalSteps` is cut off. */
-function toMusicalPattern(project: StudioProject, placements: Placement[], totalSteps: number): MusicalPattern {
+/**
+ * `primary` is the pattern whose instrument keeps the channel's own track id, so
+ * previews play the sound being edited. Patterns with other instruments get extra tracks.
+ */
+function toMusicalPattern(project: StudioProject, placements: Placement[], totalSteps: number, primary: number): MusicalPattern {
   const { channels, mixerTracks } = project
   const master = mixerTracks.find((bus) => bus.id === 0)
   const channelSolo = channels.some((channel) => channel.solo)
@@ -107,7 +116,7 @@ function toMusicalPattern(project: StudioProject, placements: Placement[], total
   const everyBar = <T extends { step: number }>(collect: (pattern: number, offset: number) => T[]) =>
     placements.flatMap(({ pattern, offset }) => collect(pattern, offset)).filter((entry) => entry.step < totalSteps)
 
-  const tracks: Track[] = channels.map((channel) => {
+  const tracks: Track[] = channels.flatMap((channel): Track[] => {
     const bus = mixerTracks.find((entry) => entry.id === channel.mixerTrack)
     const muted = channel.muted || channel.vol === 0 || bus?.mute === true || bus?.vol === 0 ||
       (channelSolo && !channel.solo) || (busSolo && !master?.solo && !bus?.solo)
@@ -122,13 +131,21 @@ function toMusicalPattern(project: StudioProject, placements: Placement[], total
       const pattern: DrumPattern = { kick: [], snare: [], closedHat: [], openHat: [], clap: [] }
       const voice = DRUM_CHANNELS[channel.id]
       if (voice) pattern[voice] = mergeHits(everyBar((p, offset) => drumHits(project, p, channel, offset)))
-      return { ...mix, type: 'drums', pattern }
+      return [{ ...mix, type: 'drums', pattern }]
     }
-    const steps = mergeNotes(everyBar((p, offset) => noteSteps(project, p, channel, offset)))
-    return {
-      ...mix, type: channel.type === 'pitched' ? 'bass' : 'melody', steps,
-      ...(channel.sound ? { sound: channel.sound } : {}),
-    }
+    // One track per instrument the channel uses, each playing only its own patterns.
+    const ownSound = channelSound(channel, primary)
+    const sounds = [ownSound, ...new Set(placements.map(({ pattern }) => channelSound(channel, pattern)))]
+    return [...new Set(sounds)].flatMap((sound): Track[] => {
+      const steps = mergeNotes(everyBar((p, offset) => channelSound(channel, p) === sound ? noteSteps(project, p, channel, offset) : []))
+      const own = sound === ownSound
+      if (!own && steps.length === 0) return []
+      return [{
+        ...mix, id: own ? channel.id : `${channel.id}~${sound ?? 'synth'}`,
+        type: channel.type === 'pitched' ? 'bass' : 'melody', steps,
+        ...(sound ? { sound } : {}),
+      }]
+    })
   })
   if (project.metronome) {
     tracks.push({
@@ -155,13 +172,13 @@ function toMusicalPattern(project: StudioProject, placements: Placement[], total
 
 /** PAT mode: loop one pattern. */
 export function toAudioPattern(project: StudioProject, activePattern: number): MusicalPattern {
-  return toMusicalPattern(project, [{ pattern: activePattern, offset: 0 }], patternLength(project, activePattern))
+  return toMusicalPattern(project, [{ pattern: activePattern, offset: 0 }], patternLength(project, activePattern), activePattern)
 }
 
-/** SONG mode: play the playlist from bar 1 to the end. */
-export function toAudioSong(project: StudioProject): MusicalPattern {
+/** SONG mode: play the playlist from bar 1 to the end. Previews use `activePattern`'s instruments. */
+export function toAudioSong(project: StudioProject, activePattern = 1): MusicalPattern {
   const placements = project.song.clips.map((clip) => ({ pattern: Number(clip.patternId), offset: clip.startBar * STEP_COUNT }))
-  return toMusicalPattern(project, placements, project.song.bars * STEP_COUNT)
+  return toMusicalPattern(project, placements, project.song.bars * STEP_COUNT, activePattern)
 }
 
 /**

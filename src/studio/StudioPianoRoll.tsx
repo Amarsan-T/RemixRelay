@@ -5,7 +5,7 @@ import { PianoRoll, type PianoRollMode } from '../components/PianoRoll'
 import { midiToName, nameToMidi, type Note } from '../music/types'
 import { SOUND_PRESETS } from '../audio/soundPresets'
 import { preloadPiano } from '../audio/sounds'
-import { defaultHit, patternLength } from './patternAdapter'
+import { channelSound, defaultHit, patternLength } from './patternAdapter'
 import { PatternLengthControl } from './PatternLengthControl'
 import type { PianoNotes, StepData, StudioChannel, StudioProject } from './types'
 
@@ -46,12 +46,12 @@ export function StudioPianoRoll({
   const [pianoAttempt, setPianoAttempt] = useState(0)
   const pianoAudition = useRef(false)
   const pianoChannelId = channel?.id
-  const pianoSound = channel?.sound
+  const sound = channel ? channelSound(channel, activePattern) ?? '' : ''
   const pianoPitch = channel ? defaultHit(channel).pitch : 'C4'
   const pianoKey = `${pianoChannelId}:${pianoAttempt}`
   const pianoState = pianoLoad?.key === pianoKey ? pianoLoad.status : 'loading'
   useEffect(() => {
-    if (!pianoChannelId || pianoSound !== 'grand-piano') return
+    if (!pianoChannelId || sound !== 'grand-piano') return
     let mounted = true
     void preloadPiano().then((ready) => {
       if (!mounted) return
@@ -62,7 +62,7 @@ export function StudioPianoRoll({
       }
     })
     return () => { mounted = false }
-  }, [pianoChannelId, pianoSound, pianoPitch, pianoKey, preview])
+  }, [pianoChannelId, sound, pianoPitch, pianoKey, preview])
 
   // After picking an instrument, play a note once the engine has the new sound.
   // Effects run after the studio hands the engine its updated pattern.
@@ -93,17 +93,18 @@ export function StudioPianoRoll({
     setStepData((prev) => ({ ...prev, [activePattern]: { ...prev[activePattern], [channel.id]: gates } }))
   }
 
-  function chooseSound(sound: string) {
-    if (sound === (channel.sound ?? '')) { preview(channel.id, defaultHit(channel).pitch); return }
-    pianoAudition.current = sound === 'grand-piano'
-    if (sound === 'grand-piano') setPianoLoad(null)
+  function chooseSound(next: string) {
+    if (next === sound) { preview(channel.id, defaultHit(channel).pitch); return }
+    pianoAudition.current = next === 'grand-piano'
+    if (next === 'grand-piano') setPianoLoad(null)
     previewNext.current = channel.id
-    setChannels((all) => all.map((c) => (c.id === channel.id ? { ...c, sound: sound || undefined } : c)))
+    // Only this pattern changes; the same channel can sound different in other patterns.
+    setChannels((all) => all.map((c) => (c.id === channel.id ? { ...c, patternSounds: { ...c.patternSounds, [activePattern]: next } } : c)))
   }
 
   /** Adds a channel using the selected instrument, so several instruments can play at once. */
   function addChannel() {
-    const preset = SOUND_PRESETS.find((s) => s.id === channel.sound) ?? SOUND_PRESETS[0]
+    const preset = SOUND_PRESETS.find((s) => s.id === sound) ?? SOUND_PRESETS[0]
     const taken = new Set(project.channels.map((c) => c.name))
     let name = preset.name
     for (let n = 2; taken.has(name); n++) name = `${preset.name} ${n}`
@@ -187,23 +188,23 @@ export function StudioPianoRoll({
       <div className="flex flex-wrap items-center gap-2 px-4 py-2 border-b border-white/10">
         <span className="w-20 shrink-0 text-[10px] font-mono uppercase tracking-wider text-zinc-500">Instrument</span>
         <div role="radiogroup" aria-label="Instrument" className="flex flex-wrap gap-1">
-          {INSTRUMENTS.map((sound) => {
-            const selected = (channel.sound ?? '') === sound.id
+          {INSTRUMENTS.map((preset) => {
+            const selected = sound === preset.id
             return (
               <button
-                key={sound.id || 'studio'}
+                key={preset.id || 'studio'}
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                title={sound.description}
-                onClick={() => chooseSound(sound.id)}
-                onPointerEnter={sound.id === 'grand-piano' ? preloadPiano : undefined}
+                title={preset.description}
+                onClick={() => chooseSound(preset.id)}
+                onPointerEnter={preset.id === 'grand-piano' ? preloadPiano : undefined}
                 className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] font-semibold transition border ${
                   selected ? 'border-aero-glow bg-sky-400/15 text-white shadow-[0_0_10px_rgba(127,227,255,0.25)]' : 'border-white/10 text-sky-100/70 hover:text-white hover:bg-white/5'
                 }`}
               >
-                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: sound.color }} />
-                {sound.name}
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ background: preset.color }} />
+                {preset.name}
               </button>
             )
           })}
@@ -215,7 +216,7 @@ export function StudioPianoRoll({
           ? 'Click to draw, drag to move or stretch, double-click or right-click to delete. Ctrl + wheel zooms time, Ctrl + middle-drag zooms pitch.'
           : 'Notes are locked. Click or drag a slider (right/up = louder). Shift/Ctrl+click or drag a box to select several, Ctrl+A for all, Esc to clear.'}
       </p>
-      {channel.sound === 'grand-piano' && (
+      {sound === 'grand-piano' && (
         <div role={pianoState === 'error' ? 'alert' : 'status'} className="flex flex-wrap items-center gap-2 px-4 py-2 text-xs text-sky-100/80">
           {pianoState === 'loading' ? 'Loading piano samples...' : pianoState === 'ready' ? 'Piano ready' : 'Piano samples could not load. Retry, or choose Studio Synth to keep playing.'}
           {pianoState === 'error' && <button type="button" onClick={() => { pianoAudition.current = true; setPianoAttempt((attempt) => attempt + 1) }} className="aero-pill aero-smoke px-3 py-1">Retry piano samples</button>}
