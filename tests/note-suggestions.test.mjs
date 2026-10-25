@@ -274,3 +274,22 @@ test('Claude is reminded what it highlighted', () => {
   const memo = suggestionsMemo({ items: items().slice(0, 2), skipped: 0 })
   assert.equal(memo, '\n[Highlighted in the editor: Retro Lead pattern 1: Add E4 at step 9 (4 steps); Retro Lead pattern 1: Remove C4 at step 4]')
 })
+
+test('Show marks exactly the chosen suggestion without changing anything', async () => {
+  const { isTarget } = await import('../src/assistant/noteCoach.ts')
+  const project = trap()
+  const before = structuredClone(project)
+  const resolved = resolveSuggestions(project, items())
+  const [addE4, removeC4, , snare] = resolved
+  const target = { item: addE4, token: 7 }
+  assert.equal(isTarget(addE4, target), true)
+  assert.equal(isTarget(removeC4, target), false)
+  assert.equal(isTarget(addE4, null), false)
+  const notes = [{ id: 'c', pitch: 60, start: 3, duration: 2, velocity: 0.8 }]
+  const ghosts = pianoGhosts(resolved, 1, 'synth_lead', notes, target)
+  assert.deepEqual(ghosts.map((g) => [g.kind, g.focusToken]), [["add", 7], ["remove", undefined]])
+  const pads = rackHighlights(resolved, 1, { item: snare, token: 2 })
+  assert.deepEqual([...pads].filter(([, pad]) => pad.focused).map(([key]) => key), ['snare:2'])
+  assert.equal(rackHighlights(resolved, 1).get('snare:2').focused, false)
+  assert.deepEqual(project, before)
+})

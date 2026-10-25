@@ -360,11 +360,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .coach-pad.remove::after { content: '\2212'; background: #ff5a6e; }
 .coach-pad.change::after { content: '\2195'; background: #ffd447; }
 @keyframes coach-pulse { 50% { box-shadow: 0 0 2px rgba(255, 212, 71, 0.2); } }
+/* The pad someone pressed Show on: a white ring and a few strong pulses, like the piano roll's. */
+.coach-pad.focused {
+  z-index: 1;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(127, 227, 255, 0.45), 0 0 16px rgba(255, 255, 255, 0.7);
+  animation: coach-find 0.7s ease-in-out 3;
+}
+@keyframes coach-find { 50% { box-shadow: 0 0 0 8px rgba(127, 227, 255, 0.15), 0 0 28px rgba(255, 255, 255, 0.95); } }
 
 /* Some people find motion or see-through surfaces hard to read: respect their settings. */
 @media (prefers-reduced-motion: reduce) {
   .aero-bubble { animation: none; }
-  .coach-pad.add { animation: none; }
+  .coach-pad.add, .coach-pad.focused { animation: none; }
 }
 /* Windows' "Transparency effects: off" turns this on. Only the see-through blur goes:
    the gradients and gloss stay, so it still looks like Aero, just opaque. */

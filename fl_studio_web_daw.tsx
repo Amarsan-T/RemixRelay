@@ -23,7 +23,8 @@ import type { ProjectChange } from './src/studio/projectSync';
 import { applySuggestions, resolveSuggestions } from './convex/noteSuggestions';
 import type { NoteSuggestion, ResolvedSuggestion } from './convex/noteSuggestions';
 import { CoachBar } from './src/assistant/CoachBar';
-import { rackHighlights, viewFor, type ActiveSuggestions, type StudioView } from './src/assistant/noteCoach';
+import { rackHighlights, viewFor, type ActiveSuggestions, type CoachTarget, type StudioView } from './src/assistant/noteCoach';
+import { Reveal } from './src/ui/Reveal';
 
 type StudioProps = {
   /** Project to open. Without one, the studio starts with the Trap Heat demo. */
@@ -110,15 +111,19 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   // AI coach: suggestions are re-checked against the live project on every
   // render, so highlights follow edits from this browser and collaborators.
   const coachItems = noteCoach ? resolveSuggestions(project, noteCoach.active.set.items) : [];
-  const rackPads = rackHighlights(coachItems, activePattern);
+  // The suggestion last asked to be shown: emphasized and scrolled into view. Never edits music.
+  const [coachTarget, setCoachTarget] = useState<CoachTarget | null>(null);
+  const rackPads = rackHighlights(coachItems, activePattern, coachTarget);
   // The piano roll shows the selected channel, or the first melodic one if a drum is selected.
   const melodicChannels = channels.filter((channel) => channel.type !== 'drum');
   const pianoChannelId = (melodicChannels.find((channel) => channel.id === selectedChannelId) ?? melodicChannels[0])?.id;
-  const showSuggestion = (item: ResolvedSuggestion) => {
+  // `uncover` is set only by Show buttons; automatic showing never moves the chat.
+  const showSuggestion = (item: ResolvedSuggestion, uncover = false) => {
     const target = viewFor(item);
     setActivePattern(target.pattern);
     setSelectedChannelId(target.channelId);
     setActiveTab(target.view);
+    setCoachTarget((previous) => ({ item, token: (previous?.token ?? 0) + 1, uncover }));
   };
   // Never called on its own: only from Apply buttons the user pressed.
   const applyCoachSuggestions = (items: NoteSuggestion[]) => updateProject((previous) => applySuggestions(previous, items));
@@ -539,7 +544,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             view={activeTab}
             pattern={activePattern}
             pianoChannelId={pianoChannelId}
-            onGo={showSuggestion}
+            onGo={(item) => showSuggestion(item, true)}
             onApply={applyCoachSuggestions}
             onClear={noteCoach.onClear}
           />
@@ -704,7 +709,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                                 ? 'bg-white/85 shadow-[0_0_4px_#fff]' 
                                 : 'bg-black/25'
                             }`} />
-                            {coachPad && <span aria-hidden="true" className={`coach-pad ${coachPad.kind}`} />}
+                            {coachPad && <span aria-hidden="true" className={`coach-pad ${coachPad.kind}${coachPad.focused ? ' focused' : ''}`} />}
+                            {coachPad?.focused && coachTarget && <Reveal token={coachTarget.token} uncover={coachTarget.uncover} />}
                           </button>
                         );
                       })}
@@ -744,6 +750,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             playStep={patternPlayStep}
             setPatternSteps={setPatternSteps}
             suggestions={coachItems}
+            coachTarget={coachTarget}
           />
         )}
 

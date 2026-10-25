@@ -17,6 +17,7 @@ async def provider(request):
             "summary": "Dreamy lead", "items": [
                 {"action": "add", "channel": "Retro Lead", "pattern": 1, "step": 1, "note": "E4", "length": 4, "why": "A long note feels calm"},
                 {"action": "add", "channel": "Retro Lead", "pattern": 1, "step": 5, "note": "G4", "length": 4, "why": "Rises gently"},
+                {"action": "add", "channel": "Retro Lead", "pattern": 1, "step": 60, "note": "C6", "length": 2, "why": "A bright sparkle at the end"},
                 {"action": "add", "channel": "Kick 808", "pattern": 1, "step": 1, "why": "A soft pulse"},
                 {"action": "add", "channel": "Missing Synth", "pattern": 1, "step": 1, "note": "C4"},
             ]}) + "</note-suggestions>"

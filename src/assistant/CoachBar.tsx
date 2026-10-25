@@ -93,9 +93,15 @@ export function CoachBar({ items, summary, skipped, view, pattern, pianoChannelI
                   <span className="ml-auto flex gap-1">
                     {item.status === 'pending' && (
                       <>
-                        {!isInView(item, view, pattern, pianoChannelId) && (
-                          <button type="button" onClick={() => onGo(item)} className="aero-pill aero-smoke px-2 py-0.5 text-[10px]">Show</button>
-                        )}
+                        {/* Only moves the view to this note or step; never edits the song. */}
+                        <button
+                          type="button"
+                          onClick={() => onGo(item)}
+                          aria-label={`Show: ${describeSuggestion(item)} on ${item.channelName}`}
+                          className="aero-pill aero-aqua px-2 py-0.5 text-[10px]"
+                        >
+                          Show
+                        </button>
                         <button
                           type="button"
                           onClick={() => onApply([item])}
