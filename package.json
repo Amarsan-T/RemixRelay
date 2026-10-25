@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "lint": "oxlint",
     "test:audio": "node --test tests/audio.test.mjs",
+    "test:sync": "node --test tests/sync.test.mjs",
+    "test": "node --test tests/audio.test.mjs tests/sync.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
