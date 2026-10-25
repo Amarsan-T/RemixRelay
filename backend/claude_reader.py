@@ -195,7 +195,7 @@ def claude_inquire(midi_path, inquiry="", max_turns=10):
     return final_text, messages
 # claude_inquire("../Example/MIDI_sample.mid", inquiry="length")
 
-def beginInquiry(inquiry):
+def beginInquiry(inquiry, convo=None):
     messages = []
     messages.append({"role": "user", "content": inquiry})
     response = client.messages.create(
@@ -210,6 +210,20 @@ def beginInquiry(inquiry):
     )
     answer = response.content[0].text
 
-    return {"response": answer}
+    return {"role": "assistant","content": answer}
+
+def AI_assist(inquiry, convo=None):
+    messages = []
+    if convo:
+        messages += convo
+    messages.append({"role": "user", "content": inquiry})
+    response = client.messages.create(
+        model=model,
+        max_tokens=1024,
+        messages=messages,
+        system="Give step-by-step, easy-to-understand instructions"
+    )
+    answer = response.content[0].text
+    return {"role": "assistant", "content": answer}
 
 #claude_inquire("./Example/MIDI_sample.mid", "sample.json")

@@ -4,12 +4,16 @@ app = FastAPI()
 from pydantic import BaseModel
 
 class Inquiry(BaseModel):
-    chat: str
-    prev: str | None = None
+    chat: str #input to pass to model
+    hist: list | None = None #previous conversation history to pass to model
     
 @app.post('/startInquiry')
-def startInquiry(inquiry: Inquiry):
+async def startInquiry(inquiry: Inquiry):
    return claude_reader.beginInquiry(inquiry.chat)
+
+@app.post('/aiAssist')
+async def AI_assist(inquiry: Inquiry):
+   return claude_reader.AI_assist(inquiry.chat, inquiry.hist)
 
 # test: http://127.0.0.1:8000/docs
 if __name__ == "__main__":
