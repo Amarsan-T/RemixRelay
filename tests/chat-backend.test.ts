@@ -37,6 +37,7 @@ beforeEach(async () => {
   vi.useFakeTimers()
   vi.stubEnv('ANTHROPIC_API_KEY', 'test-placeholder')
   vi.stubEnv('CLAUDE_MODEL', '')
+  vi.stubEnv('ANTHROPIC_WORKSPACE_ID', '')
   vi.stubGlobal('fetch', fetchMock)
   fetchMock.mockReset().mockImplementation(async () => response())
   t = createTest()
@@ -154,6 +155,54 @@ test('retries count toward minute limits without replacing previous attempt reco
   await expect(t.mutation(api.chat.retry, { replyId: message._id })).rejects.toThrow('Wait a minute')
   expect(await t.run((ctx) => ctx.db.query('chatAttempts').collect())).toHaveLength(5)
   expect(await list()).toHaveLength(2)
+})
+
+test.each([
+  ['Your credit balance is too low to access the Anthropic API.', 'credits and spending limits', 'billing'],
+  ['The organization has reached its spend limit.', 'credits and spending limits', 'billing'],
+  ['This API key is not scoped to a workspace; include anthropic-workspace-id.', 'ANTHROPIC_WORKSPACE_ID', 'workspace'],
+  ['Unsupported beta header: provider-only details', 'model settings', 'fallback'],
+  ['output_config.effort is unsupported on this model: provider-only details', 'model settings', 'effort'],
+  ['Invalid model identifier: provider-only details', 'CLAUDE_MODEL', 'model'],
+  ['Invalid message content: provider-only details', 'Try a shorter message', 'request'],
+])('HTTP 400 is classified safely: %s', async (message, expected, reason) => {
+  const logger = vi.spyOn(console, 'error').mockImplementation(() => {})
+  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message } }), { status: 400 }))
+  await send()
+  await flush()
+  expect((await reply()).content).toContain(expected)
+  expect((await reply()).content).not.toContain(message)
+  expect(JSON.stringify(logger.mock.calls)).toContain('reason=' + reason)
+  expect(JSON.stringify(logger.mock.calls)).not.toContain(message)
+})
+
+test('non-JSON provider billing errors are classified without exposing their body', async () => {
+  const message = 'Credit balance is too low. Private provider diagnostic.'
+  const logger = vi.spyOn(console, 'error').mockImplementation(() => {})
+  fetchMock.mockImplementationOnce(async () => new Response(message, { status: 400 }))
+  await send()
+  await flush()
+  expect((await reply()).content).toContain('credits and spending limits')
+  expect(JSON.stringify(logger.mock.calls)).toContain('reason=billing')
+  expect(JSON.stringify(logger.mock.calls)).not.toContain(message)
+})
+
+test('an organization-wide key sends the selected workspace only in a server request header', async () => {
+  vi.stubEnv('ANTHROPIC_WORKSPACE_ID', ' wrkspc_test ')
+  await send()
+  await flush()
+  const options = fetchMock.mock.calls[0][1]
+  expect(new Headers(options.headers).get('anthropic-workspace-id')).toBe('wrkspc_test')
+  expect(options.body).not.toContain('wrkspc_test')
+  expect(await reply()).toMatchObject({ status: 'complete' })
+})
+
+test('an unavailable workspace is distinguished from an unavailable model', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  fetchMock.mockImplementationOnce(async () => new Response(JSON.stringify({ type: 'error', error: { type: 'not_found_error', message: 'Workspace not found.' } }), { status: 404 }))
+  await send()
+  await flush()
+  expect((await reply()).content).toContain('ANTHROPIC_WORKSPACE_ID')
 })
 
 test('hourly and global budgets reject requests before saving another question', async () => {

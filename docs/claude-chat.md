@@ -42,16 +42,36 @@ These application limits complement an Anthropic account spending cap.
    Variables, add `ANTHROPIC_API_KEY` using the dashboard's secret entry field.
    Do not paste it into chat, a command argument, React, any `VITE_*` variable,
    `.env.local`, Vercel, or Git.
-4. Optionally set `CLAUDE_MODEL` in the same server environment. The default is
+4. If the key is not scoped to a workspace, also set `ANTHROPIC_WORKSPACE_ID`
+   in the same Convex server environment. Copy the intended workspace ID from
+   [Anthropic Console Workspaces](https://platform.claude.com/settings/workspaces).
+   The action sends it as `anthropic-workspace-id`; workspace-scoped keys can
+   omit this setting. See [Anthropic authentication](https://platform.claude.com/docs/en/manage-claude/authentication).
+5. Optionally set `CLAUDE_MODEL` in the same server environment. The default is
    `claude-opus-5-5`, verified in the
    [Anthropic model catalog](https://platform.claude.com/docs/en/models/overview).
    `claude-sonnet-5-5` is also supported. Other model IDs omit model-specific
    effort and fallback options; availability depends on the Anthropic account.
-5. With `.env.local` selecting `CONVEX_DEPLOYMENT=dev:...`, run
+6. With `.env.local` selecting `CONVEX_DEPLOYMENT=dev:...`, run
    `npx convex dev --once` and `npm run dev -- --port 5199`.
-6. After rotation, run `npm run test:chat:dev -- --with-claude` and
+7. After rotation, run `npm run test:chat:dev -- --with-claude` and
    `npm run test:chat:browser -- http://localhost:5199/ --with-claude`.
    These verify real replies, saved musical context, and recent-turn memory.
+8. For detailed real-provider verification, run
+   `npm run test:chat:real -- --with-claude http://127.0.0.1:5199/`.
+   It creates only disposable Development projects and checks specific
+   instruments, note pitches/start steps, pattern lengths, playlist clips,
+   memory after refresh, a live tempo edit, project isolation, and UI retry
+   after a controlled context error. It makes paid requests only when explicitly
+   given `--with-claude`; transcripts and results stay in ignored
+   `test-results/real-chat/`.
+
+Listing the environment variable name alone does not prove a usable value is
+available. A deployment administrator can safely check server-side presence with
+`npx convex run --deployment watchful-sockeye-395 --inline-query '({ configured: Boolean(process.env.ANTHROPIC_API_KEY) })'`.
+This returns only a boolean, never the key. If chat still reports "no API key,"
+re-save a nonempty fresh value on that exact deployment and retry a disposable
+conversation. Do not export the environment values into logs or source files.
 
 The [server-side fallback beta](https://platform.claude.com/docs/en/build-with-claude/refusals-and-fallback)
 and low-effort setting are enabled only for the known compatible model IDs.
@@ -77,3 +97,25 @@ deploy a production backend, change production secrets, or deploy Vercel.
 Live backend/browser checks create separate test projects in Development and
 refuse production or mismatched deployment URLs. Screenshots go to ignored
 `test-results/browser/`. Test projects are retained; no existing data is deleted.
+
+## Final release after approval
+
+Development settings do not configure Production. After the reviewed PR is
+approved and merged, the release still needs these separate steps:
+
+1. Deploy the reviewed Convex schema/functions to the existing Production
+   deployment `silent-butterfly-873`, including `chatMessages`, `chatAttempts`,
+   their indexes, and the chat action. Do not import Development test data.
+2. Configure a fresh server-only Production `ANTHROPIC_API_KEY`, and
+   `ANTHROPIC_WORKSPACE_ID` if that key is not workspace-scoped. Set
+   `CLAUDE_MODEL` only if overriding the default. Neither the API key nor the
+   workspace setting belongs in React or Vercel frontend variables.
+3. Build Vercel from the approved revision using Node 24, `npm ci`,
+   `npm run build`, and output `dist`. Public Production build settings are:
+   `REMIXRELAY_DEPLOYMENT_MODE=collaborative-demo`,
+   `REMIXRELAY_CONVEX_PRODUCTION_NAME=silent-butterfly-873`, and
+   `VITE_CONVEX_URL=https://silent-butterfly-873.convex.cloud`.
+4. Publish manually after release approval; automatic Git deployments remain
+   disabled. Then perform the approved hosted chat, persistence, collaboration,
+   and audio smoke checks. A first visit to an empty Production database seeds
+   the shipped demo projects, so include that data write in release approval.

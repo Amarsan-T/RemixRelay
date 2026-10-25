@@ -19,6 +19,7 @@
     "test:chat:backend": "vitest run",
     "test:chat:dev": "node tests/browser/chat-backend.mjs",
     "test:chat:browser": "node tests/browser/chat-ui.mjs",
+    "test:chat:real": "node tests/browser/chat-real.mjs",
     "test:studio:browser": "node tests/browser/smoke.mjs",
     "test:collab:browser": "node tests/browser/collab.mjs"
   },
