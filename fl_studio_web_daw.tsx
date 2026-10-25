@@ -540,7 +540,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                     }`}
                   >
                     {/* Left: Channel Controls (Pan, Vol, Mute, Solo) */}
-                    <div className="studio-channel-controls flex items-center gap-2 w-72 shrink-0 sm:sticky sm:left-0 z-10">
+                    <div className="studio-channel-controls flex items-center self-stretch gap-2 w-72 shrink-0 sm:sticky sm:left-0 z-10">
                       {/* Selection LED */}
                       <div className={`w-1.5 h-6 rounded-full transition-all ${
                         isSelected ? 'bg-aero-glow shadow-[0_0_8px_#7fe3ff]' : 'bg-transparent'
