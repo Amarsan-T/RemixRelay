@@ -9,7 +9,7 @@ import { channelSound, defaultHit, patternLength } from './patternAdapter'
 import { PatternLengthControl } from './PatternLengthControl'
 import type { PianoNotes, StepData, StudioChannel, StudioProject } from './types'
 import type { ResolvedSuggestion } from '../../convex/noteSuggestions'
-import { pianoGhosts } from '../assistant/noteCoach'
+import { pianoGhosts, type CoachTarget } from '../assistant/noteCoach'
 
 type Props = {
   project: StudioProject
@@ -25,6 +25,8 @@ type Props = {
   setPatternSteps: Dispatch<SetStateAction<Record<number, number> | undefined>>
   /** AI note suggestions to highlight; only this channel and pattern's are drawn. */
   suggestions?: ResolvedSuggestion[]
+  /** The suggestion someone pressed Show on, emphasized and scrolled into view. */
+  coachTarget?: CoachTarget | null
 }
 
 /** The default synth every channel starts with, listed first in the instrument picker. */
@@ -40,7 +42,7 @@ const NEW_CHANNEL_INSERT = 6
  */
 export function StudioPianoRoll({
   project, activePattern, selectedChannelId, onSelectChannel, setChannels, setPianoNotes, setStepData, preview, playStep,
-  setPatternSteps, suggestions = [],
+  setPatternSteps, suggestions = [], coachTarget,
 }: Props) {
   const [mode, setMode] = useState<PianoRollMode>('notes')
   // Drums play from the channel rack, so only melodic channels get a piano roll.
@@ -240,7 +242,7 @@ export function StudioPianoRoll({
         color={channel.color}
         onPreview={(pitch, velocity) => preview(channel.id, midiToName(pitch), velocity)}
         mode={mode}
-        ghosts={pianoGhosts(suggestions, activePattern, channel.id, notes)}
+        ghosts={pianoGhosts(suggestions, activePattern, channel.id, notes, coachTarget)}
       />
     </div>
   )

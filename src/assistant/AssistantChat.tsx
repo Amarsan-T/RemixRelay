@@ -7,6 +7,7 @@ import type { Id } from '../../convex/_generated/dataModel'
 import { MAX_MESSAGE_CHARS } from '../../convex/chatLimits'
 import { describeSuggestion } from '../../convex/noteSuggestions'
 import type { SuggestionSet } from '../../convex/noteSuggestions'
+import { UNCOVER_EVENT } from '../ui/Reveal'
 
 const STARTERS = [
   'I want a dreamy, relaxing melody.',
@@ -50,6 +51,14 @@ export function AssistantChat({ projectId, projectReady = true, highlightedId = 
   useEffect(() => {
     scroller.current?.scrollTo({ top: scroller.current.scrollHeight })
   }, [lastKey, open])
+
+  // Step aside when a note shown by the AI coach would be hidden under this panel.
+  // The draft and conversation are kept; the AI Chat button reopens it.
+  useEffect(() => {
+    const minimize = () => setOpen(false)
+    window.addEventListener(UNCOVER_EVENT, minimize)
+    return () => window.removeEventListener(UNCOVER_EVENT, minimize)
+  }, [])
 
   // When Claude answers a question asked in this browser with note
   // suggestions, highlight them right away. Highlighting never edits the song.
@@ -115,6 +124,7 @@ export function AssistantChat({ projectId, projectReady = true, highlightedId = 
   return (
     <section
       aria-label="AI chat"
+      data-floating-panel
       className="aero-panel fixed bottom-12 right-4 z-40 flex h-[min(36rem,calc(100vh-7rem))] w-[min(26rem,calc(100vw-2rem))] flex-col overflow-hidden text-sm text-zinc-100"
     >
       <header className="aero-panel-header flex items-center gap-2 px-4 py-2.5">

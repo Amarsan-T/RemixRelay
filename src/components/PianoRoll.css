@@ -260,8 +260,19 @@
 @keyframes pr-ghost-pulse {
   50% { box-shadow: 0 0 2px rgba(255, 212, 71, 0.2); }
 }
+/* The suggestion someone pressed Show on: a white ring and a few strong pulses so the eye finds it. */
+.pr-ghost.focused {
+  z-index: 3;
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+  animation: pr-ghost-find 0.7s ease-in-out 3;
+  box-shadow: 0 0 0 4px rgba(127, 227, 255, 0.45), 0 0 16px rgba(255, 255, 255, 0.7);
+}
+@keyframes pr-ghost-find {
+  50% { box-shadow: 0 0 0 8px rgba(127, 227, 255, 0.15), 0 0 28px rgba(255, 255, 255, 0.95); }
+}
 @media (prefers-reduced-motion: reduce) {
-  .pr-ghost.add, .pr-ghost.change-to { animation: none; }
+  .pr-ghost.add, .pr-ghost.change-to, .pr-ghost.focused { animation: none; }
 }
 
 .pr-playhead {

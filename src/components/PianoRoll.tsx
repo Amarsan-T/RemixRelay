@@ -16,6 +16,7 @@ import {
   type Note,
 } from '../music/types'
 import { HIGHEST_PITCH, LOWEST_PITCH } from '../../convex/noteSuggestions'
+import { Reveal } from '../ui/Reveal'
 import './PianoRoll.css'
 
 // Shared with AI note suggestions, which may only use pitches shown here.
@@ -71,6 +72,8 @@ export type GhostNote = {
   duration: number
   /** Shown on hover and read by screen readers. */
   label: string
+  /** Set on the note someone asked to see: it is emphasized and scrolled into view each time this changes. */
+  focusToken?: number
 }
 
 type Drag =
@@ -527,7 +530,8 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
           {ghosts.filter((ghost) => ghost.pitch >= LOWEST && ghost.pitch <= HIGHEST && ghost.start < steps).map((ghost) => (
             <div
               key={ghost.key}
-              className={`pr-ghost ${ghost.kind}`}
+              className={`pr-ghost ${ghost.kind}${ghost.focusToken !== undefined ? ' focused' : ''}`}
+              data-coach-focused={ghost.focusToken !== undefined ? '' : undefined}
               role="img"
               aria-label={ghost.label}
               title={ghost.label}
@@ -539,6 +543,7 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
               }}
             >
               {cellH >= 12 && <span>{ghost.kind === 'remove' ? '✕' : ghost.kind === 'change-from' ? '↕' : `+ ${midiToName(ghost.pitch)}`}</span>}
+              {ghost.focusToken !== undefined && <Reveal token={ghost.focusToken} />}
             </div>
           ))}
 
