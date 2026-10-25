@@ -34,7 +34,7 @@ export function ProjectActions({ entry, onRename, onDelete }: {
         <MoreHorizontal className="h-5 w-5" />
       </button>
       {/* Real sibling controls: no buttons nested inside the card's open button. */}
-      {menu && <div role="menu" aria-label={`Actions for ${entry.name}`} className="aero-glass absolute right-0 mt-2 w-56 rounded-xl p-1 shadow-xl"
+      {menu && <div role="menu" aria-label={`Actions for ${entry.name}`} className="aero-menu absolute right-0 mt-2 w-56 rounded-xl p-1 shadow-xl"
         onKeyDown={event => {
           if (event.key === 'Escape') { setMenu(false); root.current?.querySelector<HTMLButtonElement>('button')?.focus() }
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -44,11 +44,11 @@ export function ProjectActions({ entry, onRename, onDelete }: {
             items[(index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length]?.focus()
           }
         }}>
-        <button role="menuitem" disabled={!allowed} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-white/50 disabled:opacity-50"
-          onClick={() => { setMenu(false); setAction({ kind: 'rename', entry }) }}><Pencil className="h-4 w-4" />Rename</button>
-        <button role="menuitem" disabled={!allowed} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-red-900 hover:bg-white/50 disabled:opacity-50"
+        <button role="menuitem" disabled={!allowed} className="aero-menu-item text-aero-ink enabled:hover:bg-sky-200/70 enabled:focus-visible:bg-sky-200/70"
+          onClick={() => { setMenu(false); setAction({ kind: 'rename', entry }) }}><Pencil className="h-4 w-4 text-aero-aqua-dark" />Rename</button>
+        <button role="menuitem" disabled={!allowed} className="aero-menu-item text-red-700 enabled:hover:bg-red-100/80 enabled:hover:text-red-800 enabled:focus-visible:bg-red-100/80 enabled:focus-visible:text-red-800"
           onClick={() => { setMenu(false); setAction({ kind: 'delete', entry }) }}><Trash2 className="h-4 w-4" />Delete</button>
-        {!allowed && <p className="px-3 py-2 text-xs text-aero-ink-soft">Management access is unavailable in this browser.</p>}
+        {!allowed && <p className="mt-1 border-t border-aero-ink/10 px-3 pb-1.5 pt-2 text-xs text-aero-ink-soft">Management access is unavailable in this browser.</p>}
       </div>}
       {action && <ProjectDialog kind={action.kind} entry={action.entry} onClose={close}
         onConfirm={name => action.kind === 'rename' ? onRename(action.entry, name) : onDelete(action.entry)} />}
