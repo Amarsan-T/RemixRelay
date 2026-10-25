@@ -20,6 +20,10 @@ const VIEW_TITLES: Record<string, string> = {
 };
 import type { MixerParam, StudioChannel, StudioProject } from './src/studio/types';
 import type { ProjectChange } from './src/studio/projectSync';
+import { applySuggestions, resolveSuggestions } from './convex/noteSuggestions';
+import type { NoteSuggestion, ResolvedSuggestion } from './convex/noteSuggestions';
+import { CoachBar } from './src/assistant/CoachBar';
+import { rackHighlights, viewFor, type ActiveSuggestions, type StudioView } from './src/assistant/noteCoach';
 
 type StudioProps = {
   /** Project to open. Without one, the studio starts with the Trap Heat demo. */
@@ -39,9 +43,11 @@ type StudioProps = {
   saveState?: 'saved' | 'saving' | 'error';
   /** Shows a Share button that copies this link. */
   shareUrl?: string;
+  /** AI note suggestions from the chat to highlight in the editors. Only this browser sees them. */
+  noteCoach?: { active: ActiveSuggestions; onClear: () => void };
 };
 
-export default function App({ initialProject, projectName, onProjectChange, onHome, connectRemote, saveState, shareUrl }: StudioProps) {
+export default function App({ initialProject, projectName, onProjectChange, onHome, connectRemote, saveState, shareUrl, noteCoach }: StudioProps) {
   const {
     project, updateProject, applyChanges, setBpm, setLoop, setMetronome, setChannels,
     setStepData, setPianoNotes, setMixerTracks, setSong, setPatternSteps, setPatternCount,
@@ -76,7 +82,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   }, [project]);
   const { bpm, loop, metronome, channels, stepData, pianoNotes, mixerTracks } = project;
   // Projects open on the song arrangement.
-  const [activeTab, setActiveTab] = useState(project.song.clips.length ? 'playlist' : 'channelRack');
+  const [activeTab, setActiveTab] = useState<StudioView>(project.song.clips.length ? 'playlist' : 'channelRack');
   const [selectedChannelId, setSelectedChannelId] = useState('synth_lead');
   const [activePattern, setActivePattern] = useState(1);
   // PAT loops the selected pattern; SONG plays the playlist.
@@ -100,6 +106,30 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
   const patternPlayStep = !isPlaying ? null
     : playMode === 'pattern' ? currentStep : patternStepAt(project, activePattern, currentStep);
   const masterVol = mixerTracks.find((track) => track.id === 0)?.vol ?? 0.85;
+
+  // AI coach: suggestions are re-checked against the live project on every
+  // render, so highlights follow edits from this browser and collaborators.
+  const coachItems = noteCoach ? resolveSuggestions(project, noteCoach.active.set.items) : [];
+  const rackPads = rackHighlights(coachItems, activePattern);
+  // The piano roll shows the selected channel, or the first melodic one if a drum is selected.
+  const melodicChannels = channels.filter((channel) => channel.type !== 'drum');
+  const pianoChannelId = (melodicChannels.find((channel) => channel.id === selectedChannelId) ?? melodicChannels[0])?.id;
+  const showSuggestion = (item: ResolvedSuggestion) => {
+    const target = viewFor(item);
+    setActivePattern(target.pattern);
+    setSelectedChannelId(target.channelId);
+    setActiveTab(target.view);
+  };
+  // Never called on its own: only from Apply buttons the user pressed.
+  const applyCoachSuggestions = (items: NoteSuggestion[]) => updateProject((previous) => applySuggestions(previous, items));
+  // Asking to see suggestions opens the first one still to do.
+  const coachFocus = noteCoach ? `${noteCoach.active.messageId}:${noteCoach.active.focus}` : '';
+  useEffect(() => {
+    const first = coachItems.find((item) => item.status === 'pending');
+    if (coachFocus && first) showSuggestion(first);
+    // Only when someone asks to be shown, never because the project changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coachFocus]);
   const masterMeterCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const handleMixerParam = <K extends MixerParam>(trackId: number, param: K, value: typeof mixerTracks[number][K]) => {
@@ -498,7 +528,23 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
       {/* ==================================================== */}
       <main className="min-h-0 flex-1 overflow-auto relative isolate p-3 sm:p-4 flex flex-col justify-start">
         <MetroBackdrop title={VIEW_TITLES[activeTab] ?? ''} />
-        
+
+        {noteCoach && coachItems.length > 0 && (
+          <CoachBar
+            // A new reply starts with its list open and no pending confirmation.
+            key={noteCoach.active.messageId}
+            items={coachItems}
+            summary={noteCoach.active.set.summary}
+            skipped={noteCoach.active.set.skipped}
+            view={activeTab}
+            pattern={activePattern}
+            pianoChannelId={pianoChannelId}
+            onGo={showSuggestion}
+            onApply={applyCoachSuggestions}
+            onClear={noteCoach.onClear}
+          />
+        )}
+
         {/* VIEW 1: CHANNEL RACK & STEP SEQUENCER */}
         {activeTab === 'channelRack' && (
           <div className="aero-panel max-w-6xl w-full mx-auto overflow-hidden">
@@ -631,6 +677,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                         const isStepActive = currentPatternSteps[stepIdx] === 1 || (channel.type !== 'drum' &&
                           (pianoNotes[activePattern]?.[channel.id]?.some(note => note.step === stepIdx) ?? false));
                         const isCurrentPlayStep = patternPlayStep === stepIdx;
+                        const coachPad = rackPads.get(`${channel.id}:${stepIdx}`);
                         // FL Studio 4-beat grouping (alternating colors every 4 steps)
                         const groupIdx = Math.floor(stepIdx / 4);
                         const isEvenGroup = groupIdx % 2 === 0;
@@ -640,6 +687,8 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                             key={stepIdx}
                             onClick={() => toggleStep(channel.id, stepIdx)}
                             aria-label={`${channel.name} step ${stepIdx + 1}`}
+                            aria-description={coachPad?.label}
+                            title={coachPad?.label}
                             aria-pressed={isStepActive}
                             className={`h-9 flex-1 min-w-[28px] max-w-[44px] rounded-[3px] border transition-all duration-75 relative flex items-center justify-center ${
                               isStepActive
@@ -655,6 +704,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
                                 ? 'bg-white/85 shadow-[0_0_4px_#fff]' 
                                 : 'bg-black/25'
                             }`} />
+                            {coachPad && <span aria-hidden="true" className={`coach-pad ${coachPad.kind}`} />}
                           </button>
                         );
                       })}
@@ -693,6 +743,7 @@ export default function App({ initialProject, projectName, onProjectChange, onHo
             preview={preview}
             playStep={patternPlayStep}
             setPatternSteps={setPatternSteps}
+            suggestions={coachItems}
           />
         )}
 

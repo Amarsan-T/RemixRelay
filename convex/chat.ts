@@ -5,6 +5,8 @@ import type { Doc, Id } from './_generated/dataModel'
 import { internal } from './_generated/api'
 import { HISTORY_MESSAGES } from './assistantPrompt'
 import { MAX_MESSAGE_CHARS, PENDING_TIMEOUT_MS } from './chatLimits'
+import { suggestionsMemo } from './noteSuggestions'
+import { suggestionSet } from './schema'
 
 const SHOWN_MESSAGES = 100
 /** Every attempt, including a retry, counts toward these limits. */
@@ -21,7 +23,8 @@ export const list = query({
     // Convex breaks equal index timestamps with _creationTime, so each question
     // precedes its reply even when both were inserted in one transaction.
     const recent = await ctx.db.query('chatMessages').withIndex('by_project', (q) => q.eq('projectId', id)).order('desc').take(SHOWN_MESSAGES)
-    return recent.reverse().map(({ _id, role, content, status, createdAt }) => ({ _id, role, content, status, createdAt }))
+    return recent.reverse().map(({ _id, role, content, status, createdAt, suggestions }) =>
+      ({ _id, role, content, status, createdAt, ...(suggestions ? { suggestions } : {}) }))
   },
 })
 
@@ -132,7 +135,8 @@ export const forReply = internalQuery({
     if (end < 0) return null
     return {
       projectName: project.name, projectData: project.data,
-      history: history.slice(0, end + 1).map(({ role, content }) => ({ role, content })),
+      // Claude remembers which notes it highlighted, for follow-ups like "why that note?".
+      history: history.slice(0, end + 1).map(({ role, content, suggestions }) => ({ role, content: content + suggestionsMemo(suggestions) })),
     }
   },
 })
@@ -154,6 +158,7 @@ export const finish = internalMutation({
     status: v.union(v.literal('complete'), v.literal('error')),
     content: v.string(), model: v.optional(v.string()),
     inputTokens: v.optional(v.number()), outputTokens: v.optional(v.number()),
+    suggestions: v.optional(suggestionSet),
   },
   handler: async (ctx, { replyId, attempt = 0, ...outcome }) => {
     const reply = await ctx.db.get(replyId)

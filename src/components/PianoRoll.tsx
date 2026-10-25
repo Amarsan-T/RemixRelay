@@ -15,10 +15,12 @@ import {
   newId,
   type Note,
 } from '../music/types'
+import { HIGHEST_PITCH, LOWEST_PITCH } from '../../convex/noteSuggestions'
 import './PianoRoll.css'
 
-const LOWEST = 36 // C2
-const HIGHEST = 84 // C6
+// Shared with AI note suggestions, which may only use pitches shown here.
+const LOWEST = LOWEST_PITCH // C2
+const HIGHEST = HIGHEST_PITCH // C6
 const RESIZE_HANDLE_PX = 8
 
 // Cell size in pixels. Width is one step (16th note), height is one semitone.
@@ -54,9 +56,22 @@ type Props = {
   onPreview: (pitch: number, velocity?: number) => void
   /** 'notes' draws and moves notes; 'velocity' locks them and edits loudness instead. */
   mode: PianoRollMode
+  /** AI-suggested notes drawn over the grid. They never take clicks, so drawing on one places that note. */
+  ghosts?: GhostNote[]
 }
 
 export type PianoRollMode = 'notes' | 'velocity'
+
+/** One AI highlight: a note to add, an existing note to remove, or a pitch change (from + to). */
+export type GhostNote = {
+  key: string
+  kind: 'add' | 'remove' | 'change-from' | 'change-to'
+  pitch: number
+  start: number
+  duration: number
+  /** Shown on hover and read by screen readers. */
+  label: string
+}
 
 type Drag =
   | { kind: 'move'; id: string; grabStep: number; grabPitch: number; origin: Note }
@@ -71,7 +86,7 @@ type Marquee = { x0: number; y0: number; x1: number; y1: number; additive: boole
 /** State for a Ctrl + middle-button vertical zoom in progress. */
 type VerticalZoom = { startY: number; startCellH: number }
 
-export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, mode }: Props) {
+export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, mode, ghosts = [] }: Props) {
   const gridRef = useRef<HTMLDivElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const drag = useRef<Drag | null>(null)
@@ -508,6 +523,24 @@ export function PianoRoll({ notes, steps, onChange, playStep, color, onPreview, 
               </div>
             )
           })}
+
+          {ghosts.filter((ghost) => ghost.pitch >= LOWEST && ghost.pitch <= HIGHEST && ghost.start < steps).map((ghost) => (
+            <div
+              key={ghost.key}
+              className={`pr-ghost ${ghost.kind}`}
+              role="img"
+              aria-label={ghost.label}
+              title={ghost.label}
+              style={{
+                left: ghost.start * cellW,
+                top: (HIGHEST - ghost.pitch) * cellH,
+                width: Math.min(ghost.duration, steps - ghost.start) * cellW,
+                height: cellH,
+              }}
+            >
+              {cellH >= 12 && <span>{ghost.kind === 'remove' ? '✕' : ghost.kind === 'change-from' ? '↕' : `+ ${midiToName(ghost.pitch)}`}</span>}
+            </div>
+          ))}
 
           {marquee && (
             <div

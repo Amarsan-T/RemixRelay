@@ -221,6 +221,49 @@
   pointer-events: none;
 }
 
+/* AI suggestions: outlined, never solid, so they read as "try this" and existing notes stay visible.
+   Gold dashes = a note to add; red = a note to remove; gold solid ring = a note to change. */
+.pr-ghost {
+  position: absolute;
+  z-index: 2;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding-left: 3px;
+  overflow: hidden;
+  border-radius: 3px;
+  pointer-events: none;
+  font: bold 10px var(--mono);
+  white-space: nowrap;
+}
+.pr-ghost.add,
+.pr-ghost.change-to {
+  border: 2px dashed #ffd447;
+  background: rgba(255, 212, 71, 0.16);
+  color: #ffe58a;
+  box-shadow: 0 0 10px rgba(255, 212, 71, 0.45);
+  animation: pr-ghost-pulse 1.6s ease-in-out infinite;
+}
+.pr-ghost.remove {
+  border: 2px dashed #ff5a6e;
+  background: repeating-linear-gradient(135deg, rgba(255, 90, 110, 0.18) 0 4px, transparent 4px 8px);
+  color: #ffd0d6;
+  justify-content: flex-end;
+  padding-right: 3px;
+}
+.pr-ghost.change-from {
+  border: 2px solid #ffd447;
+  color: #ffe58a;
+  justify-content: flex-end;
+  padding-right: 3px;
+}
+@keyframes pr-ghost-pulse {
+  50% { box-shadow: 0 0 2px rgba(255, 212, 71, 0.2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-ghost.add, .pr-ghost.change-to { animation: none; }
+}
+
 .pr-playhead {
   position: absolute;
   top: 0;

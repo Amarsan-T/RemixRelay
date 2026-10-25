@@ -9,6 +9,8 @@ import type { StoredMessage } from './assistantPrompt'
 import { describeProject } from './musicContext'
 import type { ProjectData } from './musicContext'
 import { askPython, serviceConfiguration } from './aiService'
+import { readReply } from './noteSuggestions'
+import type { SuggestionProject } from './noteSuggestions'
 
 // Convex owns durable claims, context, memory and persistence.
 // Only the authenticated Python service holds credentials and calls Claude.
@@ -35,6 +37,15 @@ export const respond = internalAction({
       projectContext: describeProject(job.projectName, job.projectData as ProjectData),
       history: boundHistory(job.history),
     })
-    await ctx.runMutation(internal.chat.finish, { replyId, attempt, ...outcome })
+    if (outcome.status !== 'complete') {
+      await ctx.runMutation(internal.chat.finish, { replyId, attempt, ...outcome })
+      return
+    }
+    // The note-suggestion block is checked against the project Claude saw and
+    // stored separately; people read the reply without it.
+    const { text, suggestions } = readReply(outcome.content, job.projectData as SuggestionProject)
+    await ctx.runMutation(internal.chat.finish, {
+      replyId, attempt, ...outcome, content: text || outcome.content, ...(suggestions ? { suggestions } : {}),
+    })
   },
 })

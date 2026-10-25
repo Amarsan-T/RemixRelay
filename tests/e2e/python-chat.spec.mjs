@@ -61,6 +61,48 @@ test('React to local Convex to Python HTTP preserves chat and memory after refre
     await peer.getByLabel('Open AI chat').click()
     await expect(peer.getByRole('region',{name:'AI chat'})).toContainText('Ada, the project is at 113 BPM.')
     expect(await client.query(anyApi.chat.list,{projectId})).toHaveLength(4)
+
+    // AI coach: the reply's suggestions are highlighted, nothing changes until Apply.
+    const project=async()=>(await client.query(anyApi.projects.get,{id:projectId})).data
+    const coach=page.getByRole('region',{name:'AI note suggestions'})
+    await page.getByLabel('Message Claude').fill('I want a dreamy, relaxing melody.')
+    await page.getByLabel('Send message').click()
+    await expect(panel).toContainText('Long, soft notes in a major key sound dreamy.')
+    await expect(panel).not.toContainText('note-suggestions')
+    await expect(panel).toContainText('3 notes to try: Dreamy lead')
+    await expect(panel).toContainText("1 more idea didn't fit this song")
+    // Highlighted right away in the Piano Roll on the suggested channel.
+    await expect(coach).toContainText('0 of 3 done')
+    await expect(page.getByRole('tab',{name:/Retro Lead/,selected:true})).toBeVisible()
+    await expect(page.getByRole('img',{name:/AI suggestion: Add E4 at step 1 \(4 steps\)/})).toBeVisible()
+    await expect(page.getByRole('img',{name:/AI suggestion: Add G4 at step 5/})).toBeVisible()
+    expect((await project()).pianoNotes[1]?.synth_lead ?? []).toEqual([])
+    await page.screenshot({path:'test-results/browser/coach-piano-roll.png'})
+    // Collaborators share the chat but not this browser's highlights.
+    await expect(peer.getByRole('region',{name:'AI chat'})).toContainText('3 notes to try')
+    await expect(peer.getByRole('region',{name:'AI note suggestions'})).toHaveCount(0)
+    // The drum suggestion is in the Channel Rack.
+    await coach.getByRole('button',{name:'Show Kick 808 · Pattern 1'}).click()
+    await expect(page.getByLabel('Kick 808 step 1',{exact:true})).toHaveAttribute('title',/AI suggestion: Light step 1/)
+    await page.screenshot({path:'test-results/browser/coach-channel-rack.png'})
+    await coach.getByRole('button',{name:'Apply: Light step 1 on Kick 808'}).click()
+    await expect.poll(async()=>(await project()).stepData[1].kick[0]).toBe(1)
+    await expect(coach).toContainText('1 of 3 done')
+    // Apply all asks first; Cancel changes nothing.
+    await coach.getByRole('button',{name:/Apply all \(2\)/}).click()
+    await coach.getByRole('button',{name:'Cancel'}).click()
+    expect((await project()).pianoNotes[1]?.synth_lead ?? []).toEqual([])
+    await coach.getByRole('button',{name:/Apply all \(2\)/}).click()
+    await coach.getByRole('button',{name:'Yes, apply'}).click()
+    await expect.poll(async()=>((await project()).pianoNotes[1]?.synth_lead ?? []).map(n=>n.note+'@'+n.step).sort()).toEqual(['E4@0','G4@4'])
+    await expect(coach).toContainText('All done!')
+    // Clearing removes the highlights; the chat can show them again.
+    await coach.getByRole('button',{name:'Clear highlights'}).click()
+    await expect(coach).toHaveCount(0)
+    await panel.getByRole('button',{name:'Show in editor'}).click()
+    await expect(coach).toContainText('All done!')
+    await panel.getByRole('button',{name:'Hide highlights'}).click()
+    await expect(coach).toHaveCount(0)
   }finally{
     await second.close()
     child.kill()

@@ -123,3 +123,38 @@ approved and merged, the release still needs these separate steps:
 ## Python service architecture
 
 The Python-service branch replaces the direct Node Anthropic call with the authenticated gateway described in [python-ai-service.md](python-ai-service.md). For that release, Anthropic credentials/model/workspace belong on Vercel; Convex uses AI_SERVICE_URL and AI_SERVICE_TOKEN. The earlier direct-provider setup above is historical. Chat mutations, persistence and safeguards remain.
+
+## AI note coach (highlighted suggestions)
+
+When Claude recommends specific notes or steps, it ends its reply with one
+`<note-suggestions>{json}</note-suggestions>` block (format in
+`convex/assistantPrompt.ts`). `convex/noteSuggestions.ts` is the single source
+of truth for reading it:
+
+- `chatAgent.respond` removes the block from the visible reply, checks every item
+  (action, 1-based step, sharps-only pitch within the piano roll's C2-C6, length
+  1-16, at most 16 items) and maps it onto the saved project: channel names become
+  real channel ids, patterns and steps must exist, and remove/change must name a
+  note that actually plays there. Anything malformed, ambiguous, already done or
+  contradictory is dropped and counted in `skipped`; nothing is guessed.
+- Checked items are stored in the optional `chatMessages.suggestions` field
+  (additive; no migration). Follow-up requests carry a one-line
+  "[Highlighted in the editor: ...]" memo so Claude remembers what it suggested.
+- In the browser the suggestions are re-resolved against the live project on
+  every render, so highlights turn "done" as notes are placed and disappear if a
+  collaborator deletes the channel or shortens the pattern.
+- Highlights are per-browser view state: they never sync or autosave. Replies to
+  a question asked in this browser are highlighted automatically; any reply can be
+  shown or hidden from its chat card, and the coach bar clears them.
+- The Piano Roll draws non-interactive ghost notes (gold dashes = add, red = remove,
+  gold ring = change pitch), so clicking a ghost simply draws that note. The
+  Channel Rack outlines pads. The coach bar shows progress and jumps to suggestions
+  on other channels or patterns.
+- The project changes only through the coach bar's Apply buttons; Apply all asks
+  for confirmation first. Applying uses the normal studio update path, so autosave
+  and per-step collaboration merging work as for hand edits.
+
+Tests: `tests/note-suggestions.test.mjs` (parsing, malformed blocks, mapping,
+highlighting, clearing, applying), `tests/chat-backend.test.ts` (storage and
+memory through Convex with the HTTP boundary mocked), and the Python-chain browser
+test, whose mocked Anthropic fixture returns a canned suggestion reply.

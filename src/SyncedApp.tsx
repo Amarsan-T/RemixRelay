@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../convex/_generated/api'
 import Studio from '../fl_studio_web_daw'
 import { AssistantChat } from './assistant/AssistantChat'
+import type { ActiveSuggestions } from './assistant/noteCoach'
+import type { SuggestionSet } from '../convex/noteSuggestions'
 import { StudioHome } from './studio/StudioHome'
 import { createBlankProject, createDemoProjects, type ProjectEntry } from './studio/projects'
 import { toStored } from './studio/projectSync'
@@ -87,6 +89,12 @@ function SyncedApp() {
 /** One open project: loads it, then keeps the studio and Convex in sync. */
 function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
   const sync = useProjectSync(id)
+  // AI note highlights are this browser's own view: they never sync or save.
+  const [coach, setCoach] = useState<ActiveSuggestions | null>(null)
+  const showSuggestions = useCallback((messageId: string, set: SuggestionSet) => {
+    setCoach((current) => ({ messageId, set, focus: (current?.focus ?? 0) + 1 }))
+  }, [])
+  const clearSuggestions = useCallback(() => setCoach(null), [])
   if (sync.status === 'missing') {
     return <Message text="This project doesn't exist. The link may be wrong, or the project was deleted." onHome={onHome} />
   }
@@ -101,9 +109,16 @@ function ProjectSession({ id, onHome }: { id: string; onHome: () => void }) {
         saveState={sync.saveState}
         shareUrl={new URL(projectPath(id), window.location.origin).href}
         onHome={onHome}
+        noteCoach={coach ? { active: coach, onClear: clearSuggestions } : undefined}
       />
       {/* Claude chat, saved per project in Convex. Floats over the studio. */}
-      <AssistantChat projectId={id} projectReady={sync.saveState === 'saved'} />
+      <AssistantChat
+        projectId={id}
+        projectReady={sync.saveState === 'saved'}
+        highlightedId={coach?.messageId ?? null}
+        onShowSuggestions={showSuggestions}
+        onHideSuggestions={clearSuggestions}
+      />
     </>
   )
 }
